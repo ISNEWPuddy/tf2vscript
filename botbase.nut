@@ -1,4 +1,6 @@
 // custom vscript bot baseclass
+ClearGameEventCallbacks();
+
 IncludeScript("timer"); // github.com/Squinkz/vscript_timer
 
 // Constrains an angle into [-180, 180] range
@@ -66,7 +68,7 @@ class PathPoint
 }
 
 // The big boy that handles all our behavior
-class Bot
+class PuddyBot
 {
 	function constructor(bot_ent)
 	{
@@ -112,8 +114,10 @@ class Bot
 	{
 		Precache();
 
+		NetProps.SetPropFloat( bot, "m_speed", move_speed ); 
+
 		bot.AddFlag(Constants.FPlayer.FL_NPC);
-		NetProps.SetPropBool( bot, "m_bResolvePlayerCollisions", false );
+		NetProps.SetPropBool( bot, "m_bResolvePlayerCollisions", false ); // prevent bot pushing people out of existence
 	}
 
 	function AlertSound()
@@ -287,10 +291,9 @@ class Bot
 
 			// Set our new position and angles
 			// Velocity is calculated from direction times speed, and converted from per-second to per-tick time
-			//bot.GetLocomotionInterface().SetDesiredSpeed( move_speed );
-			//bot.GetLocomotionInterface().Approach(bot_pos + move_dir * move_speed, 1.0);
-			bot.SetAbsOrigin(bot_pos + (move_dir * move_speed * FrameTime()));
-			bot.SetAbsAngles(move_ang);
+			bot.GetLocomotionInterface().SetDesiredSpeed( move_speed );
+			bot.GetLocomotionInterface().Approach(bot_pos + move_dir * move_speed, 1.0);
+			bot.SetLocalAngles(move_ang);
 
 			return true;
 		}
@@ -298,12 +301,33 @@ class Bot
 		return false;
 	}
 
+	// GetLocomotionInterface().FaceTowards() without the "tf_base_boss_max_turn_rate"
+	function FaceTowards(targetvector)
+	{
+		local path_pos = targetvector;
+		local bot_pos = bot.GetLocomotionInterface().GetFeet();
+
+		local move_dir = (path_pos - bot_pos);
+		move_dir.Norm();
+
+		local move_ang = VectorAngles(move_dir);
+
+		local bot_ang = bot.GetAbsAngles()
+		move_ang.x = bot_ang.x;
+		move_ang.y = ApproachAngle(move_ang.y, bot_ang.y, turn_rate);
+		move_ang.z = bot_ang.z;
+
+		bot.SetLocalAngles(move_ang);
+	}
+
 	function SelectVictim()
 	{
-		if ( IsPotentiallyChaseable( path_target_ent ) )
+		if ( IsPotentiallyChaseable( path_target_ent ) /*&& target_focus_timer.Running()*/ )
 			return;
 
 		path_target_ent = null;
+
+		// look for players
 		local newTarget = Entities.FindByClassnameNearest( "player", bot.GetOrigin(), selectvictim_range );
 		if ( newTarget != null )
 		{
@@ -314,6 +338,33 @@ class Bot
 				UpdatePath();
 			}
 		}
+		/*else // look for more guns
+		{
+			newTarget = Entities.FindByClassnameNearest( "obj_*", bot.GetOrigin(), selectvictim_range );
+			if ( newTarget != null )
+			{
+				if ( IsPotentiallyChaseable( newTarget ) )
+				{
+					path_target_ent = newTarget;
+					//target_focus_timer.Start( 5.0 );
+					AlertSound();
+					UpdatePath();
+				}
+			}
+		}*/
+	}
+
+	function SetVictim(victim)
+	{
+		path_target_ent = victim;
+		AlertSound();
+		UpdatePath();
+	}
+
+	function UpdateSurrounding()
+	{
+		//if ( path_target_ent != null && IsPotentiallyChaseable( path_target_ent ) )
+		//	return;
 	}
 
 	function IsPotentiallyChaseable(victim)
@@ -321,10 +372,16 @@ class Bot
 		if ( victim == null )
 			return false;
 
-		if ( NetProps.GetPropInt(victim, "m_lifeState") != 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
+		if ( !IsPotentiallyVisible( victim ) )
 			return false;
 
-		if ( victim.GetHealth() <= 0 )
+		if ( NetProps.GetPropInt(victim, "m_lifeState") > 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
+			return false;
+
+		if ( NetProps.GetPropInt(victim, "m_Shared.m_nPlayerState") != 0 ) // TF_STATE_ACTIVE
+			return false;
+
+		if ( victim.GetHealth() == 0 )
 			return false;
 
 		if ( victim.GetTeam() == bot.GetTeam() )
@@ -335,9 +392,6 @@ class Bot
 
 		if ( victim.IsPlayer() )
 		{
-			if ( victim.IsFullyInvisible() )
-				return false;
-
 			if ( victim.IsInvulnerable() )
 				return false;
 
@@ -357,18 +411,18 @@ class Bot
 
 			if ( victim.InCond(Constants.ETFCond.TF_COND_HALLOWEEN_GHOST_MODE) )
 				return false;
+		}
 
-			if ( victim.GetLastKnownArea() && ( victim.GetLastKnownArea() instanceof CTFNavArea ) )
-			{
-				if ( victim.GetLastKnownArea().HasAttributeTF( Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_BLUE | Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_RED ) )
-					return false;
+		if ( victim.GetLastKnownArea() && ( victim.GetLastKnownArea() instanceof CTFNavArea ) )
+		{
+			if ( victim.GetLastKnownArea().HasAttributeTF( Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_BLUE | Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_RED ) )
+				return false;
 
-				if ( victim.GetLastKnownArea().IsPotentiallyVisibleToTeam( bot.GetTeam() ) )
-					return true;
+			if ( victim.GetLastKnownArea().IsPotentiallyVisibleToTeam( bot.GetTeam() ) )
+				return true;
 
-				if ( victim.GetLastKnownArea().IsReachableByTeam( bot.GetTeam() ) )
-					return true;
-			}
+			if ( victim.GetLastKnownArea().IsReachableByTeam( bot.GetTeam() ) )
+				return true;
 		}
 
 		return true;
@@ -379,33 +433,32 @@ class Bot
 		if ( victim == null )
 			return false;
 
-		if ( NetProps.GetPropInt(victim, "m_lifeState") != 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
-			return false;
-
-		if ( victim.GetHealth() <= 0 )
-			return false;
-
-		if ( victim.GetTeam() == bot.GetTeam() )
-			return false;
-
 		if ( victim.IsPlayer() )
 		{
 			if ( victim.IsFullyInvisible() )
 				return false;
 
-			if ( victim.IsInvulnerable() )
-				return false;
-
 			if ( victim.InCond(Constants.ETFCond.TF_COND_HALLOWEEN_GHOST_MODE) )
 				return false;
+		}
 
-			if ( victim.GetLastKnownArea() && ( victim.GetLastKnownArea() instanceof CTFNavArea ) )
+		local trace =
+		{
+			start = bot.EyePosition(),
+			end = victim.EyePosition(),
+			mask = Constants.FContents.CONTENTS_SOLID | Constants.FContents.CONTENTS_MOVEABLE | Constants.FContents.CONTENTS_MONSTER | Constants.FContents.CONTENTS_DEBRIS, 
+			ignore = bot
+		};
+
+
+		if ( TraceLineEx(trace) ) 
+		{
+			if (debug)
+				DebugDrawLine(bot.EyePosition(), victim.EyePosition(), 0, 255, 0, true, 0.1);
+
+			if ( ("enthit" in trace ) && ( trace.enthit != victim ) )
 			{
-				if ( victim.GetLastKnownArea().HasAttributeTF( Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_BLUE | Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_RED ) )
-					return false;
-
-				if ( victim.GetLastKnownArea().IsCompletelyVisibleToTeam( bot.GetTeam() ) )
-					return false;
+				return false;
 			}
 		}
 
@@ -415,33 +468,29 @@ class Bot
 	function Update()
 	{
 		SelectVictim();
+		UpdateSurrounding();
 
 		// Try moving
-		if (Move())
+		if ( CanMove() )
 		{
-			// Moving, set the run animation
-			if (bot.GetSequence() != seq_run)
+			if (Move())
 			{
-				bot.SetSequence(seq_run);
-				bot.SetPoseParameter(pose_move_x, 1.0); // Set the move_x pose to max weight
+				// Moving, set the run animation
+				if (bot.GetSequence() != seq_run)
+				{
+					bot.SetSequence(seq_run);
+					bot.SetPoseParameter(pose_move_x, 1.0); // Set the move_x pose to max weight
+				}
 			}
-		}
-		else
-		{
-			// Not moving, set the idle animation
-			if (bot.GetSequence() != seq_idle)
+			else
 			{
-				bot.SetSequence(seq_idle);
-				bot.SetPoseParameter(pose_move_x, 0.0); // Clear the move_x pose
+				// Not moving, set the idle animation
+				if (bot.GetSequence() != seq_idle)
+				{
+					bot.SetSequence(seq_idle);
+					bot.SetPoseParameter(pose_move_x, 0.0); // Clear the move_x pose
+				}
 			}
-		}
-
-		// adjust animation speed to actual movement speed
-		if ( bot.GetLocomotionInterface().GetGroundSpeed() > 0.0 )
-		{
-			// Clamp playback rate to avoid datatable warnings.  Anything faster would look silly, anyway.
-			local playbackRate = clamp( speed / bot.GetLocomotionInterface().GetGroundSpeed(), -4.0, 12.0 );
-			bot.SetPlaybackRate( playbackRate );
 		}
 
 		// Replay animation if it has finished
@@ -490,6 +539,41 @@ class Bot
 		//EntFireByHandle( bot, "Ignite", "", 0, null, null );
 	}
 
+	function CanMove()
+	{
+		if ( IsStunned() )
+			return false;
+
+		return true;
+	}
+
+	function IsStunned()
+	{
+		if ( !stun_timer.IsElapsed() )
+			return true;
+
+		return false;
+	}
+
+	function Stun()
+	{
+		if ( IsStunned() )
+			return;
+
+		path_target_ent = null;
+
+		DispatchParticleEffect( "bonk_text", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), bot.EyePosition() + Vector(0,0,32) );
+		stun_timer.Start( bot.GetSequenceDuration(seq_stun) );
+		EmitAmbientSoundOn( "TFPlayer.StunImpact", 10.0, 2000, 100, bot );
+		bot.ResetSequence(seq_stun);
+		if (bot.GetSequence() != seq_stun)
+			bot.SetSequence(seq_stun);
+
+		ResetPath();
+		path_update_time_next = Time() + bot.GetSequenceDuration(seq_stun);
+		path_update_force = true;
+	}
+
 	function OnTakeDamage(params)
 	{
 		damage_force = params.damage_force;
@@ -519,8 +603,14 @@ class Bot
 			|| params.damage_custom == Constants.ETFDmgCustom.TF_DMG_CUSTOM_CLEAVER_CRIT
 			|| params.damage_custom == Constants.ETFDmgCustom.TF_DMG_CUSTOM_SHOTGUN_REVENGE_CRIT )
 			{
-				DispatchParticleEffect( "crit_text", bot.GetAttachmentOrigin(bot.LookupAttachment("headcrab")), bot.EyePosition() + Vector(0,0,32) );
+				DispatchParticleEffect( "crit_text", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), bot.EyePosition() + Vector(0,0,32) );
 				EmitAmbientSoundOn( "TFPlayer.CritHit", 10.0, 75, 100, bot );
+
+				local ItemID = NetProps.GetPropInt(weapon, "m_AttributeManager.m_Item.m_iItemDefinitionIndex")
+				if ( ItemID == 656 ) // Holiday Punch
+				{
+					Stun();
+				}
 			}
 
 			if ( params.crit_type == Constants.ECritType.CRIT_MINI )
@@ -541,6 +631,12 @@ class Bot
 		bot.TerminateScriptScope();
 
 		bot.Kill();
+	}
+
+	function VictimKilled()
+	{
+		if ( path_target_ent != null ) 
+			path_target_ent = null;
 	}
 
 	bot = null;						// The bot entity we belong to
@@ -566,10 +662,14 @@ class Bot
 	seq_run = null;					// Animation to use when running
 	seq_attack = null;
 	pose_move_x = null;				// Pose parameter to set for running animation
+	seq_stun = null;
 
 	damage_force = null;			// Damage force from the bot's last OnTakeDamage event
 
 	debug = false;					// When true, debug visualization is enabled
+
+	stun_timer = Timer();
+	target_focus_timer = Timer();
 
 	selectvictim_range = 500.0;
 	quitvictim_range = 1000.0;
@@ -613,9 +713,15 @@ function BotThink()
 	// Add scope to the entity
 	bot.ValidateScriptScope();
 	// Append custom bot class and initialize its behavior
-	bot.GetScriptScope().my_bot <- Bot(bot);
+	bot.GetScriptScope().my_bot <- PuddyBot(bot);
 
 	return bot;
+}
+
+// Return true if this entity has the my_bot script scope
+function HasBotScript(ent)
+{
+	return (ent.GetScriptScope() != null && ent.GetScriptScope().my_bot != null);
 }
 
 function OnScriptHook_OnTakeDamage(params)
@@ -625,9 +731,9 @@ function OnScriptHook_OnTakeDamage(params)
 	if ( ent == null )
 		return;
 
-	if (ent.GetClassname() == "base_boss" && HasBotScript(ent))
+	if ( ent.GetClassname() == "base_boss" && HasBotScript(ent) )
 	{
-		// Save the damage force into the bot's data
+		// Into the bot's data
 		ent.GetScriptScope().my_bot.OnTakeDamage(params);
 	}
 }
@@ -645,12 +751,17 @@ function OnGameEvent_npc_hurt(params)
 		}
 	}
 }
-__CollectGameEventCallbacks(this);
 
-function HasBotScript(ent)
+function OnGameEvent_player_death(params)
 {
-	// Return true if this entity has the my_bot script scope
-	return (ent.GetScriptScope() != null && ent.GetScriptScope().my_bot != null);
+	local ent = EntIndexToHScript( params.inflictor_entindex );
+	local victim = EntIndexToHScript( params.victim_entindex );
+	if ( ( ent && ent.IsValid() && ent.GetClassname() == "base_boss" && HasBotScript(ent) ) && ( victim && victim.IsValid() ))
+	{
+		//Msg(ent.GetName() + " Killed " + victim + "\n" );
+		ent.GetScriptScope().my_bot.VictimKilled();
+	}
 }
+__CollectGameEventCallbacks(this);
 
 //BotCreate();

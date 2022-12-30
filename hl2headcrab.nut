@@ -13,7 +13,7 @@ local HEADCRAB_ATTACK_SOUND =
 	"npc/headcrab/attack3.wav",
 ];
 
-local HEADCRAB_BITE_SOUND = "npc/headcrab/headbite.wav";
+const HEADCRAB_BITE_SOUND = "npc/headcrab/headbite.wav";
 
 local HEADCRAB_DEATH_SOUND =
 [
@@ -42,7 +42,7 @@ local HEADCRAB_IDLE_SOUND =
 
 
 
-class CHeadcrab extends Bot
+class CHeadcrab extends PuddyBot
 {
 	function constructor(bot_ent)
 	{

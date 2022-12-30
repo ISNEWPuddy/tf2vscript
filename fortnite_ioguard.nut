@@ -1,5 +1,4 @@
 // guy from fortnite
-ClearGameEventCallbacks();
 
 Msg("FORTNITE IO Guard Bot...\n");
 
@@ -8,21 +7,24 @@ IncludeScript("botbase.nut");
 local botbase_ioguard_attack_range = 250;
 local botbase_ioguard_health_base = 250;
 
-local IOGUARD_IDLE_SEQUENCE = "Idle1";
-local IOGUARD_WALK_SEQUENCE = "RunAIMALL1_SG";
+const IOGUARD_IDLE_SEQUENCE = "Idle1";
+const IOGUARD_WALK_SEQUENCE = "RunAIMALL1_SG";
 
-local IOGUARD_ATTACK_SEQUENCE = "grenThrow";
-local IOGUARD_RANGEATTACK_SEQUENCE = "shootSMG1s";
-local IOGUARD_RANGERELOAD_SEQUENCE = "reload";
-local IOGUARD_STUN_SEQUENCE = "physflinch1";
+const IOGUARD_ATTACK_SEQUENCE = "grenThrow";
+const IOGUARD_RANGEATTACK_SEQUENCE = "shootSMG1s";
+const IOGUARD_RANGERELOAD_SEQUENCE = "reload";
+const IOGUARD_STUN_SEQUENCE = "physflinch1";
 
 const IOGUARD_ATTACK_SOUND = "Taunt.YetiRoarBeginning";
 const IOGUARD_ATTACK_HIT_SOUND = "Taunt.YetiChestHit";
-const IOGUARD_PAIN_SOUND = "Taunt.YetiRoarBeginning";
+const IOGUARD_PAIN_SOUND = "fortnite/HitMarker_Body_01.wav";
 
-local GUARD_STATUS_LOW = 0;
-local GUARD_STATUS_MED = 1;
-local GUARD_STATUS_HIGH = 2;
+enum GUARD_STATUS
+{
+	LOW = 0
+	MED = 1
+	HIGH = 2
+}
 
 
 local IOGUARD_IDLE_SOUND =
@@ -42,6 +44,16 @@ local IOGUARD_SUS_SOUND =
 	"fortnite/vo/IOAgents_2021_Suspicious_040.wav",
 	"fortnite/vo/IOAgents_2021_Suspicious_050.wav",
 ];
+
+local IOGUARD_BACKTOIDLE_SOUND =
+[
+	"fortnite/vo/IOAgents_2021_SuspiciousReturnToIdle_010.wav",
+	"fortnite/vo/IOAgents_2021_SuspiciousReturnToIdle_020.wav",
+	"fortnite/vo/IOAgents_2021_SuspiciousReturnToIdle_030.wav",
+	"fortnite/vo/IOAgents_2021_SuspiciousReturnToIdle_040.wav",
+	"fortnite/vo/IOAgents_2021_SuspiciousReturnToIdle_050.wav",
+];
+
 local IOGUARD_ALERT_SOUND =
 [
 	"fortnite/vo/IOAgents_2021_FullAlert_010.wav",
@@ -69,7 +81,7 @@ local IOGUARD_DEATH_SOUND =
 ];
 
 
-class IOGuard extends Bot
+class IOGuard extends PuddyBot
 {
 	function constructor(bot_ent)
 	{
@@ -107,7 +119,7 @@ class IOGuard extends Bot
 		selectvictim_range = 500.0;
 		quitvictim_range = 1500.0;
 
-		status = GUARD_STATUS_LOW;
+		status = GUARD_STATUS.LOW;
 
 		Spawn();
 
@@ -132,6 +144,11 @@ class IOGuard extends Bot
 		for (local i = 0; i < IOGUARD_SUS_SOUND.len(); i++)
 		{
 			PrecacheSound( IOGUARD_SUS_SOUND[i] );
+		}
+
+		for (local i = 0; i < IOGUARD_BACKTOIDLE_SOUND.len(); i++)
+		{
+			PrecacheSound( IOGUARD_BACKTOIDLE_SOUND[i] );
 		}
 
 		for (local i = 0; i < IOGUARD_ALERT_SOUND.len(); i++)
@@ -173,18 +190,18 @@ class IOGuard extends Bot
 
 		weapon_model = SpawnEntityFromTable("prop_dynamic", 
 		{
-			origin = bot.GetOrigin(),
+			origin = bot.GetAttachmentOrigin(bot.LookupAttachment("anim_attachment_RH")),
 			angles = bot.GetAbsAngles(),
 			model = "models/weapons/w_smg1.mdl",
 			effects = Constants.FEntityEffects.EF_BONEMERGE | Constants.FEntityEffects.EF_PARENT_ANIMATES,
 		});
 		EntFireByHandle( weapon_model, "SetParent", "npc_ioguard_" + bot.GetScriptId(), 0, null, null );
-		EntFireByHandle( weapon_model, "SetParentAttachment", "anim_attachment_LH", 0, null, null );
+		EntFireByHandle( weapon_model, "SetParentAttachment", "anim_attachment_RH", 0, null, null );
 
 		weapon_bullet = SpawnEntityFromTable("env_gunfire", 
 		{
-			origin = bot.GetAttachmentOrigin(bot.LookupAttachment("anim_attachment_LH")),
-			angles = bot.GetAbsAngles(),
+			origin = weapon_model.GetAttachmentOrigin(weapon_model.LookupAttachment("muzzle")),
+			angles = weapon_model.GetAttachmentAngles(weapon_model.LookupAttachment("muzzle")),
 			target = null,
 			minburstsize = 2,
 			maxburstsize = 9
@@ -196,7 +213,7 @@ class IOGuard extends Bot
 			collisions = 1,
 			shootsound = "weapons/smg1/smg1_fire1.wav",
 			startdisabled = 1,
-			//tracertype = "TF_3rdPersonMuzzleFlash",
+			tracertype = "BrightTracer",
 		});
 		EntFireByHandle( weapon_bullet, "SetParent", "npc_ioguard_" + bot.GetScriptId(), 0, null, null );
 		//EntFireByHandle( weapon_bullet, "SetParentAttachmentMaintainOffset", "muzzle", 0, null, null );
@@ -206,30 +223,40 @@ class IOGuard extends Bot
 		status_text = SpawnEntityFromTable("point_worldtext", 
 		{
 			origin = bot.GetAttachmentOrigin(bot.LookupAttachment("eyes")) + Vector(0,0,-50),
-			angles = bot.GetAbsAngles(),
+			angles = QAngle( -bot.GetAbsAngles().x, -bot.GetAbsAngles().y, -bot.GetAbsAngles().z ),
 			message = "?",
 			textsize = 0,
 			color = "255 255 255",
+			orientation = "1",
 		});
 		EntFireByHandle( status_text, "SetParent", "npc_ioguard_" + bot.GetScriptId(), 0, null, null );
 		EntFireByHandle( status_text, "SetParentAttachmentMaintainOffset", "eyes", 0, null, null );
 
 		bot.SetModelScale( 1.2, 0 );
-		//EmitAmbientSoundOn("fortnite/music/IOGuard_Lo.wav", 10.0, 4000, 100, bot );
 	}
 
 	function AlertSound()
 	{
 		EmitAmbientSoundOn( IOGUARD_ALERT_SOUND[rand() % IOGUARD_ALERT_SOUND.len()], 10.0, 75, 100, bot );
 
-		status = GUARD_STATUS_HIGH;
+		status = GUARD_STATUS.HIGH;
+
+		// alert another guards
+		/*local squadMate = null;
+		while ( squadMate = Entities.FindByNameWithin( null, "npc_ioguard_*", bot.GetOrigin(), 2000.0 ) )
+		{
+			if ( ( squadMate && squadMate.IsValid() ) && squadMate != bot )
+			{
+				squadMate.GetScriptScope().my_bot.SetVictim( path_target_ent );
+			}
+		}*/
 	}
 
 	function SusSound()
 	{
 		EmitAmbientSoundOn( IOGUARD_SUS_SOUND[rand() % IOGUARD_SUS_SOUND.len()], 10.0, 75, 100, bot );
 
-		status = GUARD_STATUS_MED;
+		status = GUARD_STATUS.MED;
 	}
 
 	function UpdatePath()
@@ -237,7 +264,7 @@ class IOGuard extends Bot
 		// Clear out the path first
 		ResetPath();
 
-		if ( status == GUARD_STATUS_LOW )
+		if ( status == GUARD_STATUS.LOW )
 		{
 			path_target_ent = null;
 			if ( patrol_timer.IsElapsed() )
@@ -336,31 +363,61 @@ class IOGuard extends Bot
 
 	function SelectVictim()
 	{
-		if ( IsPotentiallyChaseable( path_target_ent ) )
+		if ( IsPotentiallyChaseable( path_target_ent ) && !target_focus_timer.IsElapsed() )
 			return;
 
 		path_target_ent = null;
-		status = GUARD_STATUS_LOW;
+		status = GUARD_STATUS.LOW;
+
+		if ( NetProps.GetPropBool(weapon_bullet, "m_bDisabled") == false )
+			EntFireByHandle( weapon_bullet, "Disable", "", 0, null, null );
+
+		// look for players
 		local newTarget = Entities.FindByClassnameNearest( "player", bot.GetOrigin(), selectvictim_range );
 		if ( newTarget != null )
 		{
-			if ( IsPotentiallyVisible( newTarget ) )
+			if ( IsPotentiallyChaseable( newTarget ) )
 			{
-				bot.GetLocomotionInterface().FaceTowards( newTarget.GetOrigin() );
-				SusSound();
-
-				if ( IsPotentiallyChaseable( newTarget ) )
-				{
+				path_target_ent = newTarget;
+				target_focus_timer.Start( 5.0 );
+				AlertSound();
+				UpdatePath();
+			}
+		}
+		/*else // look for more guns
+		{
+			newTarget = Entities.FindByClassnameNearest( "obj_*", bot.GetOrigin(), selectvictim_range );
+			if ( newTarget != null )
+			{
 					path_target_ent = newTarget;
 					AlertSound();
 					UpdatePath();
-				}
+			}
+		}*/
+	}
+
+	function UpdateSurrounding()
+	{
+		if ( IsPotentiallyChaseable( path_target_ent ) )
+			return;
+
+		local newSus = Entities.FindByClassnameNearest( "player", bot.GetOrigin(), selectvictim_range * 1.5 );
+		if ( newSus != null )
+		{
+			if ( IsPotentiallyVisible( newSus ) )
+			{
+				FaceTowards( newSus.GetOrigin() );
+				if ( status != GUARD_STATUS.MED )
+					SusSound();
 			}
 		}
 	}
 
 	function UpdateAttack()
 	{
+		if ( IsStunned() )
+			return;
+
 		if ( attack_hit_timer.Running() )
 		{
 			if ( attack_hit_timer.IsElapsed() )
@@ -390,22 +447,22 @@ class IOGuard extends Bot
 	{
 		switch (status)
 		{
-			case GUARD_STATUS_LOW:
+			case GUARD_STATUS.LOW:
 				EntFireByHandle( status_text, "AddOutput", "message ?", 0, null, null );
-				EntFireByHandle( status_text, "AddOutput", "textsize 0", 0, null, null );
-				EntFireByHandle( status_text, "AddOutput", "color 255 255 255", 0, null, null );
+				EntFireByHandle( status_text, "SetTextSize", "0", 0, null, null );
+				EntFireByHandle( status_text, "SetColor", "255 255 255", 0, null, null );
 			break;
 
-			case GUARD_STATUS_MED:
+			case GUARD_STATUS.MED:
 				EntFireByHandle( status_text, "AddOutput", "message ?", 0, null, null );
-				EntFireByHandle( status_text, "AddOutput", "textsize 45", 0, null, null );
-				EntFireByHandle( status_text, "AddOutput", "color 255 125 125", 0, null, null );
+				EntFireByHandle( status_text, "SetTextSize", "35", 0, null, null );
+				EntFireByHandle( status_text, "SetColor", "255 125 125", 0, null, null );
 			break;
 
-			case GUARD_STATUS_HIGH:
+			case GUARD_STATUS.HIGH:
 				EntFireByHandle( status_text, "AddOutput", "message !", 0, null, null );
-				EntFireByHandle( status_text, "AddOutput", "textsize 45", 0, null, null );
-				EntFireByHandle( status_text, "AddOutput", "color 255 0 0", 0, null, null );
+				EntFireByHandle( status_text, "SetTextSize", "45", 0, null, null );
+				EntFireByHandle( status_text, "SetColor", "255 0 0", 0, null, null );
 			break;
 		}
 	}
@@ -447,8 +504,7 @@ class IOGuard extends Bot
 
 		weapon_bullet.SetAbsAngles( bot.GetAbsAngles() );
 
-		if ( path_target_ent != null )
-			NetProps.SetPropEntity( weapon_bullet, "m_hTarget", path_target_ent );
+		NetProps.SetPropEntity( weapon_bullet, "m_hTarget", path_target_ent );
 
 		EntFireByHandle( weapon_bullet, "Enable", "", 0, null, null );
 
@@ -474,18 +530,21 @@ class IOGuard extends Bot
 		{
 			weapon_clip -= 1;
 		}
+		
+		DispatchParticleEffect( "muzzle_pistol", weapon_model.GetAttachmentOrigin(weapon_model.LookupAttachment("muzzle")), weapon_model.GetAttachmentOrigin(weapon_model.LookupAttachment("muzzle")) );
+		//EmitAmbientSoundOn( "weapons/smg1/smg1_fire1.wav", 10.0, 1500, 100, bot );
 
 		local trace =
 		{
-			start = bot.GetOrigin(),
-			end = bot.GetOrigin() + (bot.GetAbsAngles().Forward() * 3500.0),
+			start = bot.EyePosition(),
+			end = bot.EyePosition() + (bot.GetAbsAngles().Forward() * 3500.0),
 			mask = Constants.FContents.CONTENTS_SOLID | Constants.FContents.CONTENTS_MOVEABLE | Constants.FContents.CONTENTS_MONSTER | Constants.FContents.CONTENTS_WINDOW | Constants.FContents.CONTENTS_DEBRIS| Constants.FContents.CONTENTS_GRATE, // MASK_SHOT_HULL
 			ignore = bot
 		};
 
 		if (TraceLineEx(trace) && ( ("enthit" in trace ) ) )
 		{						
-			local vDmgForce = bot.GetOrigin() - trace.enthit.GetOrigin();
+			local vDmgForce = bot.EyePosition() - trace.enthit.GetOrigin();
 			trace.enthit.TakeDamageEx(bot,bot,bot,vDmgForce,trace.pos,14,Constants.FDmgType.DMG_BULLET);
 		}
 
@@ -496,54 +555,6 @@ class IOGuard extends Bot
 	{
 		reload_range_timer.Stop();
 		weapon_clip = 45;
-	}
-
-	function RangeAttack()
-	{
-		attack_range_hit_timer.Stop();
-
-		weapon_bullet.SetAbsAngles( bot.GetAbsAngles() );
-
-		if ( path_target_ent != null )
-			NetProps.SetPropEntity( weapon_bullet, "m_hTarget", path_target_ent );
-
-		EntFireByHandle( weapon_bullet, "Enable", "", 0, null, null );
-
-		if ( weapon_clip <= 0 )
-		{
-			bot.GetLocomotionInterface().Stop();
-
-			reload_range_timer.Start(bot.GetSequenceDuration(seq_rangereload));
-			attack_timer.Start(bot.GetSequenceDuration(seq_rangereload));
-
-			bot.ResetSequence(seq_rangereload);
-			if (bot.GetSequence() != seq_rangereload)
-				bot.SetSequence(seq_rangereload);
-
-			ResetPath();
-			path_update_time_next = Time() + bot.GetSequenceDuration(seq_rangereload);
-			path_update_force = true;
-		}
-		else
-		{
-			weapon_clip -= 1;
-		}
-
-		local trace =
-		{
-			start = bot.GetOrigin(),
-			end = bot.GetOrigin() + (bot.GetAbsAngles().Forward() * 2000),
-			mask = Constants.FContents.CONTENTS_SOLID | Constants.FContents.CONTENTS_MOVEABLE | Constants.FContents.CONTENTS_MONSTER | Constants.FContents.CONTENTS_WINDOW | Constants.FContents.CONTENTS_DEBRIS| Constants.FContents.CONTENTS_GRATE, // MASK_SHOT_HULL
-			ignore = bot
-		};
-
-		if (TraceLineEx(trace) && ( ("enthit" in trace ) ) )
-		{						
-			local vDmgForce = bot.GetOrigin() - trace.enthit.GetOrigin();
-			trace.enthit.TakeDamageEx(bot,bot,bot,vDmgForce,trace.pos,14,Constants.FDmgType.DMG_BULLET);
-		}
-
-		//path_target_ent = null;
 	}
 
 	function IsAttacking()
@@ -584,30 +595,31 @@ class IOGuard extends Bot
 	function Update()
 	{
 		SelectVictim();
+		UpdateSurrounding();
 
 		if ( !patrol_timer.Running() )
 			patrol_timer.Start( 5.0 );
 
-		if ( IsPotentiallyVisible( path_target_ent ) && IsPotentiallyChaseable( path_target_ent ) && ( status != GUARD_STATUS_HIGH ) )
+		if ( IsPotentiallyVisible( path_target_ent ) && IsPotentiallyChaseable( path_target_ent ) && ( status != GUARD_STATUS.HIGH ) )
 		{
-			status = GUARD_STATUS_HIGH;
+			status = GUARD_STATUS.HIGH;
 		}
 
 		switch (status)
 		{
-			case GUARD_STATUS_LOW:
+			case GUARD_STATUS.LOW:
 				EmitAmbientSoundOn("fortnite/music/IOGuard_Lo.wav", 10.0, 4000, 100, bot );
 				StopAmbientSoundOn("fortnite/music/IOGuard_Med.wav", bot);
 				StopAmbientSoundOn("fortnite/music/IOGuard_Hi.wav", bot);
 			break;
 
-			case GUARD_STATUS_MED:
+			case GUARD_STATUS.MED:
 				EmitAmbientSoundOn("fortnite/music/IOGuard_Med.wav", 10.0, 4000, 100, bot );
 				StopAmbientSoundOn("fortnite/music/IOGuard_Lo.wav", bot);
 				StopAmbientSoundOn("fortnite/music/IOGuard_Hi.wav", bot);
 			break;
 
-			case GUARD_STATUS_HIGH:
+			case GUARD_STATUS.HIGH:
 				EmitAmbientSoundOn("fortnite/music/IOGuard_Hi.wav", 10.0, 4000, 100, bot );
 				StopAmbientSoundOn("fortnite/music/IOGuard_Med.wav", bot);
 				StopAmbientSoundOn("fortnite/music/IOGuard_Lo.wav", bot);
@@ -621,7 +633,7 @@ class IOGuard extends Bot
 				if ((path_target_ent.GetOrigin() - bot.GetOrigin()).Length2D() < botbase_ioguard_attack_range)
 				{
 					bot.GetLocomotionInterface().Stop();
-					bot.GetLocomotionInterface().FaceTowards( path_target_ent.GetOrigin() );
+					FaceTowards( path_target_ent.GetOrigin() );
 
 					if ( debug )
 						DebugDrawCircle(bot.GetOrigin(), 0, 255, 0, 128.0, true, 5);
@@ -643,7 +655,7 @@ class IOGuard extends Bot
 		UpdateStatus();
 		UpdateAttack();
 
-		if (!IsAttacking())
+		if (CanMove())
 		{
 			if (Move()) // Try moving
 			{
@@ -691,7 +703,7 @@ class IOGuard extends Bot
 
 		damage_force = params.damage_force;
 
-		if ( IsPotentiallyVisible( params.attacker ) && ( status == GUARD_STATUS_LOW ) )
+		if ( IsPotentiallyVisible( params.attacker ) && ( status == GUARD_STATUS.LOW ) )
 		{
 			SusSound();
 			path_target_ent = params.attacker;
@@ -707,6 +719,12 @@ class IOGuard extends Bot
 			{
 				DispatchParticleEffect( "crit_text", bot.GetAttachmentOrigin(bot.LookupAttachment("eyes")), bot.EyePosition() + Vector(0,0,32) );
 				EmitAmbientSoundOn( "TFPlayer.CritHit", 10.0, 75, 100, bot );
+
+				local ItemID = NetProps.GetPropInt(weapon, "m_AttributeManager.m_Item.m_iItemDefinitionIndex")
+				if ( ItemID == 656 ) // Holiday Punch
+				{
+					Stun();
+				}
 			}
 
 			if ( params.crit_type == Constants.ECritType.CRIT_MINI )
@@ -732,6 +750,15 @@ class IOGuard extends Bot
 		DispatchParticleEffect( "env_sawblood", bot.GetOrigin() + Vector(0,0,32), Vector(0,0,0) );
 
 		base.OnKilled(params);
+	}
+
+	function VictimKilled()
+	{
+		if ( path_target_ent == null )
+			return;
+
+		path_target_ent = null;
+		EmitAmbientSoundOn( IOGUARD_BACKTOIDLE_SOUND[rand() % IOGUARD_BACKTOIDLE_SOUND.len()], 10.0, 1000, 100, bot );
 	}
 
 	attack_timer = Timer();

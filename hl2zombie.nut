@@ -1,5 +1,4 @@
 // Half Life 2 Zombie
-ClearGameEventCallbacks();
 
 IncludeScript("hl2headcrab.nut");
 
@@ -81,10 +80,10 @@ local ZOMBIE_IDLE_SOUND =
 	"npc/zombie/zombie_voice_idle14.wav",
 ];
 
-local ZOMBIE_MOAN_SOUND = "npc/zombie/moan_loop1.wav";
+const ZOMBIE_MOAN_SOUND = "npc/zombie/moan_loop1.wav";
 
 
-class CZombie extends Bot
+class CZombie extends PuddyBot
 {
 	function constructor(bot_ent)
 	{
@@ -243,7 +242,7 @@ class CZombie extends Bot
 				if ((path_target_ent.GetOrigin() - bot.GetOrigin()).Length2D() < ZOMBIE_MELEE_REACH)
 				{
 					bot.GetLocomotionInterface().Stop();
-					bot.GetLocomotionInterface().FaceTowards( path_target_ent.GetOrigin() );
+					FaceTowards( path_target_ent.GetOrigin() );
 
 					EmitAmbientSoundOn( ZOMBIE_ATTACK_SOUND[rand() % ZOMBIE_ATTACK_SOUND.len()], 10.0, 75, 100, bot );
 
@@ -262,7 +261,7 @@ class CZombie extends Bot
 
 		UpdateAttack();
 
-		if (!IsAttacking())
+		if (CanMove())
 		{
 			if (Move()) // Try moving
 			{

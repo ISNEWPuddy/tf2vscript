@@ -1,9 +1,7 @@
 // Yeti Boss
-ClearGameEventCallbacks();
+//Msg("Yeti Bot...\n");
 
-Msg("Yeti Bot...\n");
-
-IncludeScript("botbase.nut");
+DoIncludeScript("botbase.nut", null);
 
 local botbase_yeti_attack_range = 200;
 local botbase_yeti_health_base = 3000;
@@ -11,17 +9,17 @@ local botbase_yeti_health_base = 3000;
 local botbase_yeti_min_player_count = 10;
 local botbase_yeti_health_per_player = 200;
 
-local YETI_IDLE_SEQUENCE = "Stand_MELEE";
-local YETI_WALK_SEQUENCE = "Run_MELEE";
+const YETI_IDLE_SEQUENCE = "Stand_MELEE";
+const YETI_WALK_SEQUENCE = "Run_MELEE";
 
-local YETI_ATTACK_SEQUENCE = "taunt_bare_knuckle_beatdown_outro";
-local YETI_GROUNDPOUND_SEQUENCE = "taunt_yeti";
-local YETI_GRABPLAYER_SEQUENCE = "taunt_headbutt_success";
-local YETI_STUN_SEQUENCE = "taunt_the_scaredycat_heavy";
+const YETI_ATTACK_SEQUENCE = "taunt_bare_knuckle_beatdown_outro";
+const YETI_GROUNDPOUND_SEQUENCE = "taunt_yeti";
+const YETI_GRABPLAYER_SEQUENCE = "taunt_headbutt_success";
+const YETI_STUN_SEQUENCE = "taunt_the_scaredycat_heavy";
 
-local YETI_ATTACK2_SEQUENCE = "taunt_yetipunch";
-local YETI_ATTACK4_SEQUENCE = "taunt07_Halloween";
-local YETI_ATTACK6_SEQUENCE = "taunt_table_flip_outro";
+const YETI_ATTACK2_SEQUENCE = "taunt_yetipunch";
+const YETI_ATTACK4_SEQUENCE = "taunt07_Halloween";
+const YETI_ATTACK6_SEQUENCE = "taunt_table_flip_outro";
 
 const YETI_ATTACK_SOUND = "Taunt.YetiRoarBeginning";
 const YETI_ATTACK_HIT_SOUND = "Taunt.YetiChestHit";
@@ -36,7 +34,7 @@ local YETI_IDLE_SOUND =
 ];
 
 
-class Yeti extends Bot
+class Yeti extends PuddyBot
 {
 	function constructor(bot_ent)
 	{
@@ -75,6 +73,7 @@ class Yeti extends Bot
 		quitvictim_range = 2000.0;
 
 		yeti_model = null;
+		home_pos = null;
 
 		Spawn();
 
@@ -85,13 +84,11 @@ class Yeti extends Bot
 	function Precache()
 	{
 		PrecacheModel( "models/player/items/taunts/yeti/yeti.mdl" );
-		//PrecacheModel( "models/player/items/heavy/yeti_head.mdl" );
-		//PrecacheModel( "models/player/items/heavy/yeti_arms.mdl" );
-		//PrecacheModel( "models/player/items/heavy/yeti_legs.mdl" );
 
 		for (local i = 0; i < YETI_IDLE_SOUND.len(); i++)
 		{
-			bot.PrecacheScriptSound( YETI_IDLE_SOUND[i] );
+			if ( IsSoundPrecached( YETI_IDLE_SOUND[i] )  )
+				bot.PrecacheScriptSound( YETI_IDLE_SOUND[i] );
 		}
 
 		bot.PrecacheScriptSound( YETI_ATTACK_SOUND );
@@ -106,7 +103,8 @@ class Yeti extends Bot
 		bot.PrecacheScriptSound( "Taunt.YetiAppearSnow" );
 		//bot.PrecacheScriptSound( "Yeti.StatueGrowl" );
 		bot.PrecacheScriptSound( "taunt_headbutt_sfx_head_impact" );
-		bot.PrecacheScriptSound( "Halloween.EyeballBossStunned" );
+		bot.PrecacheScriptSound( "TFPlayer.StunImpact" );
+		bot.PrecacheScriptSound( "Halloween.Merasmus_Stun" );
 
 		//PrecacheSound("ui/cyoa_musicdrunkenpipebomb.mp3");
 	}
@@ -139,8 +137,6 @@ class Yeti extends Bot
 			NetProps.SetPropInt(healthBar, "m_iBossHealthPercentageByte", 255.0 * 1 );
 		}
 
-		//bot.SetBodygroup(bot.FindBodygroupByName("hat"), 1);
-
 		yeti_model = SpawnEntityFromTable("prop_dynamic", 
 		{
 			origin = bot.GetOrigin(),
@@ -151,13 +147,17 @@ class Yeti extends Bot
 		EntFireByHandle( yeti_model, "SetParent", "npc_yeti_" + bot.GetScriptId(), 0, null, null );
 		EntFireByHandle( yeti_model, "SetParentAttachment", "head", 0, null, null );
 
+		home_pos = bot.GetOrigin();
+
 		bot.SetModelScale( 1.65, 0 );
-		bot.EmitSound( "Taunt.YetiAppearSnow" );
+		SendGlobalGameEvent( "teamplay_broadcast_audio", {team = -1, sound = "Taunt.YetiAppearSnow"} );
 		DispatchParticleEffect( "xms_snowburst", bot.GetOrigin() + Vector(0,0,50), Vector(0,0,0) );
 		DispatchParticleEffect( "taunt_yeti_flash", bot.GetOrigin(), Vector(0,0,0) );
 
-		Say(null,"The YETI has appeared!\n", false);
-		//EmitAmbientSoundOn("ui/cyoa_musicdrunkenpipebomb.mp3", 10.0, 4000, 100, bot );
+		//Say(null,"The YETI has appeared!\n", false);
+
+		//SendGlobalGameEvent( "pumpkin_lord_summoned", {} );
+		SendGlobalGameEvent( "player_connect_client", {name = "THE YETI"} );
 	}
 
 	function AlertSound()
@@ -165,8 +165,148 @@ class Yeti extends Bot
 		EmitAmbientSoundOn( YETI_ALERT_SOUND, 10.0, 75, 100, bot );
 	}
 
+	function IsPotentiallyChaseable(victim)
+	{
+		if ( victim == null )
+			return false;
+
+		//if ( !IsPotentiallyVisible( victim ) )
+			//return false;
+
+		if ( NetProps.GetPropInt(victim, "m_lifeState") > 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
+			return false;
+
+		if ( NetProps.GetPropInt(victim, "m_Shared.m_nPlayerState") != 0 ) // TF_STATE_ACTIVE
+			return false;
+
+		if ( victim.GetHealth() == 0 )
+			return false;
+
+		if ( victim.GetTeam() == bot.GetTeam() )
+			return false;
+
+		if ((bot.GetOrigin() - victim.GetOrigin()).Length() > 2000.0)
+			return false;
+
+		if ( victim.IsPlayer() )
+		{
+			if ( victim.IsInvulnerable() )
+				return false;
+
+			//if ( !( victim.GetFlags() & Constants.FPlayer.FL_ONGROUND ) )
+			//{
+			//	Vector victimAreaPos;
+			//	victimArea->GetClosestPointOnArea( victim->GetAbsOrigin(), &victimAreaPos );
+			//	if ( ( victim->GetAbsOrigin() - victimAreaPos ).AsVector2D().IsLengthGreaterThan( 50.0f ) )
+			//	{
+			//		// off the mesh and unreachable - pick a new victim
+			//		return false;
+			//	}
+			//}
+
+			if ( victim.InAirDueToExplosion() )
+				return false;
+
+			if ( victim.InCond(Constants.ETFCond.TF_COND_HALLOWEEN_GHOST_MODE) )
+				return false;
+		}
+
+		if ( victim.GetLastKnownArea() && ( victim.GetLastKnownArea() instanceof CTFNavArea ) )
+		{
+			if ( victim.GetLastKnownArea().HasAttributeTF( Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_BLUE | Constants.FTFNavAttributeType.TF_NAV_SPAWN_ROOM_RED ) )
+				return false;
+
+			if ( victim.GetLastKnownArea().IsPotentiallyVisibleToTeam( bot.GetTeam() ) )
+				return true;
+
+			if ( victim.GetLastKnownArea().IsReachableByTeam( bot.GetTeam() ) )
+				return true;
+		}
+
+		return true;
+	}
+
 	function UpdateAttack()
 	{
+		if ( IsStunned() )
+			return;
+
+		if ( !attack_specialattack_timer.Running() )
+			attack_specialattack_timer.Start( 15.0 );
+
+		if ( attack_timer.IsElapsed() )
+		{
+			if (path_target_ent && path_target_ent.IsValid())
+			{
+				if ((path_target_ent.GetOrigin() - bot.GetOrigin()).Length2D() < botbase_yeti_attack_range)
+				{
+					bot.GetLocomotionInterface().Stop();
+					FaceTowards( path_target_ent.GetOrigin() );
+
+					if ( attack_specialattack_timer.IsElapsed() )
+					{
+						attack_specialattack_timer.Stop();
+						local grabbableTarget = Entities.FindByClassnameNearest( "player", bot.GetOrigin(), 128.0 );
+						if ( debug )
+							DebugDrawCircle(bot.GetOrigin(), 0, 255, 0, 128.0, true, 5);
+
+						if ( ( grabbableTarget && grabbableTarget.IsValid() ) && IsPotentiallyChaseable( grabbableTarget ) )
+						{
+							path_target_ent = grabbableTarget;
+							if ( grabbableTarget.GetPlayerClass() != Constants.ETFClass.TF_CLASS_SOLDIER )
+								EntFireByHandle( grabbableTarget, "SpeakResponseConcept", "HalloweenLongFall", 0, null, null );
+							else
+								EntFireByHandle( grabbableTarget, "SpeakResponseConcept", "TLK_PLAYER_PAIN", 0, null, null );
+
+							//grabbableTarget.SetForcedTauntCam( 1 );
+							attack_grabplayer_hit_timer.Start( 1.9 );
+							attack_timer.Start( 6 );
+
+							EmitAmbientSoundOn( "Taunt.YetiRoarFirst", 10.0, 1000, 100, bot );
+
+							bot.ResetSequence(seq_grabplayer);
+							if (bot.GetSequence() != seq_grabplayer)
+								bot.SetSequence(seq_grabplayer);
+
+							ResetPath();
+							path_update_time_next = Time() + 7;
+							path_update_force = true;
+						}
+						else
+						{
+							attack_groundslam_hit_timer.Start( 5.4 );
+							attack_timer.Start( 7 );
+
+							EmitAmbientSoundOn( "Taunt.YetiRoarSecond", 10.0, 1000, 100, bot );
+
+							bot.ResetSequence(seq_groundpound);
+							if (bot.GetSequence() != seq_groundpound)
+								bot.SetSequence(seq_groundpound);
+
+							ResetPath();
+							path_update_time_next = Time() + 7;
+							path_update_force = true;
+						}
+					}
+					else
+					{
+						EmitAmbientSoundOn( YETI_ATTACK_SOUND, 10.0, 1000, 100, bot );
+
+						bot.ResetSequence(seq_attack);
+						if (bot.GetSequence() != seq_attack)
+							bot.SetSequence(seq_attack);
+
+						attack_hit_timer.Start( 0.2 );
+						attack_timer.Start( 1.2 );
+
+						ResetPath();
+						path_update_time_next = Time() + 0.5;
+						path_update_force = true;
+					}
+				}
+			}
+		}
+
 		if ( attack_hit_timer.Running() )
 		{
 			if ( attack_hit_timer.IsElapsed() )
@@ -225,8 +365,9 @@ class Yeti extends Bot
 			{
 				local vDmgForce = path_target_ent.GetOrigin() - bot_pos;
 
-				path_target_ent.TakeDamageCustom(bot,bot,bot,vDmgForce,trace.pos,path_target_ent.GetMaxHealth() * 0.85,Constants.FDmgType.DMG_CRUSH, Constants.ETFDmgCustom.TF_DMG_CUSTOM_DECAPITATION_BOSS);
+				path_target_ent.ApplyPunchImpulseX(4);
 				path_target_ent.ApplyAbsVelocityImpulse( vDmgForce * 400 + Vector(0, 0, 400));
+				path_target_ent.TakeDamageCustom(bot,bot,bot,vDmgForce,trace.pos,path_target_ent.GetMaxHealth() * 0.85,Constants.FDmgType.DMG_CRUSH, Constants.ETFDmgCustom.TF_DMG_CUSTOM_DECAPITATION_BOSS);
 				EmitAmbientSoundOn( YETI_ATTACK_HIT_SOUND, 10.0, 100, 100, path_target_ent );
 			}
 		}
@@ -251,7 +392,7 @@ class Yeti extends Bot
 		if ( debug )
 			DebugDrawCircle(bot.GetOrigin(), 0, 255, 0, 300.0, true, 5);
 
-		while ( targetEnemies = Entities.FindInSphere( targetEnemies, bot.GetOrigin(), 300.0 ) )
+		while ( targetEnemies = Entities.FindInSphere( targetEnemies, bot.GetOrigin(), 330.0 ) )
 		{
 			if ( targetEnemies.IsPlayer() )
 			{
@@ -272,14 +413,20 @@ class Yeti extends Bot
 		attack_grabplayer_hit_timer.Stop();
 
 		DispatchParticleEffect( "taunt_headbutt_impact", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), Vector(0,0,0) );
+		DispatchParticleEffect( "mvm_soldier_shockwave", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), Vector(0,0,0) );
 		EmitAmbientSoundOn( YETI_ATTACK_HIT_SOUND, 10.0, 100, 1000, bot );
 		EmitAmbientSoundOn( "Powerup.Knockout_Melee_Hit", 10.0, 1000, 100, bot );
 
 		EmitAmbientSoundOn( "taunt_headbutt_sfx_head_impact", 10.0, 100, 1000, path_target_ent );
 
-		path_target_ent.SetForcedTauntCam(0);
+		//path_target_ent.SetForcedTauntCam(0);
 		path_target_ent.TakeDamageCustom(bot,bot,bot,Vector(0, 0, 0),Vector(0, 0, 0),path_target_ent.GetMaxHealth() * 2,Constants.FDmgType.DMG_CRUSH, Constants.ETFDmgCustom.TF_DMG_CUSTOM_DECAPITATION_BOSS);
 		path_target_ent = null;
+	}
+
+	function HealingSequence()
+	{
+		NetProps.SetPropInt(healthBar, "m_iBossState", 1 );
 	}
 
 	function IsAttacking()
@@ -293,6 +440,25 @@ class Yeti extends Bot
 		if ( !attack_grabplayer_hit_timer.IsElapsed() )
 			return true;
 
+		if ( IsStunned() )
+			return true;
+
+		return false;
+	}
+
+	function CanMove()
+	{
+		if ( IsAttacking() )
+			return false;
+
+		if ( IsStunned() )
+			return false;
+
+		return true;
+	}
+
+	function IsStunned()
+	{
 		if ( !stun_timer.IsElapsed() )
 			return true;
 
@@ -317,85 +483,15 @@ class Yeti extends Bot
 	{
 		SelectVictim();
 
-		if ( !attack_specialattack_timer.Running() )
-			attack_specialattack_timer.Start( 20.0 );
-
-		if ( attack_timer.IsElapsed() )
-		{
-			if (path_target_ent && path_target_ent.IsValid())
-			{
-				if ((path_target_ent.GetOrigin() - bot.GetOrigin()).Length2D() < botbase_yeti_attack_range)
-				{
-					bot.GetLocomotionInterface().Stop();
-					bot.GetLocomotionInterface().FaceTowards( path_target_ent.GetOrigin() );
-
-					if ( attack_specialattack_timer.IsElapsed() )
-					{
-						attack_specialattack_timer.Stop();
-						local grabbableTarget = Entities.FindByClassnameNearest( "player", bot.GetOrigin(), 128.0 );
-						if ( debug )
-							DebugDrawCircle(bot.GetOrigin(), 0, 255, 0, 128.0, true, 5);
-
-						if ( ( grabbableTarget && grabbableTarget.IsValid() ) && IsPotentiallyChaseable( grabbableTarget ) )
-						{
-							path_target_ent = grabbableTarget;
-							if ( grabbableTarget.GetPlayerClass() != Constants.ETFClass.TF_CLASS_SOLDIER )
-								EntFireByHandle( grabbableTarget, "SpeakResponseConcept", "HalloweenLongFall", 0, null, null );
-							else
-								EntFireByHandle( grabbableTarget, "SpeakResponseConcept", "TLK_PLAYER_PAIN", 0, null, null );
-
-							grabbableTarget.SetForcedTauntCam( 1 );
-							attack_grabplayer_hit_timer.Start( 1.9 );
-							attack_timer.Start( 6 );
-
-							EmitAmbientSoundOn( "Taunt.YetiRoarFirst", 10.0, 1000, 100, bot );
-
-							bot.ResetSequence(seq_grabplayer);
-							if (bot.GetSequence() != seq_grabplayer)
-								bot.SetSequence(seq_grabplayer);
-
-							ResetPath();
-							path_update_time_next = Time() + 7;
-							path_update_force = true;
-						}
-						else
-						{
-							attack_groundslam_hit_timer.Start( 5.4 );
-							attack_timer.Start( 7 );
-
-							EmitAmbientSoundOn( "Taunt.YetiRoarSecond", 10.0, 1000, 100, bot );
-
-							bot.ResetSequence(seq_groundpound);
-							if (bot.GetSequence() != seq_groundpound)
-								bot.SetSequence(seq_groundpound);
-
-							ResetPath();
-							path_update_time_next = Time() + 7;
-							path_update_force = true;
-						}
-					}
-					else
-					{
-						EmitAmbientSoundOn( YETI_ATTACK_SOUND, 10.0, 1000, 100, bot );
-
-						bot.ResetSequence(seq_attack);
-						if (bot.GetSequence() != seq_attack)
-							bot.SetSequence(seq_attack);
-
-						attack_hit_timer.Start( 0.3 );
-						attack_timer.Start( 1.3 );
-
-						ResetPath();
-						path_update_time_next = Time() + 1.3;
-						path_update_force = true;
-					}
-				}
-			}
-		}
-
 		UpdateAttack();
 
-		if (!IsAttacking())
+		if ( bot.GetLocomotionInterface().IsStuck() && ( bot.GetLocomotionInterface().GetStuckDuration() > 5.0 ) )
+		{
+			bot.SetOrigin(home_pos);
+			bot.GetLocomotionInterface().ClearStuckStatus("Yeti goes home.");
+		}
+
+		if (CanMove())
 		{
 			if (Move()) // Try moving
 			{
@@ -437,6 +533,32 @@ class Yeti extends Bot
 		//EntFireByHandle( bot, "Ignite", "", 0, null, null );=
 	}
 
+	function Stun()
+	{
+		if ( !stun_timer.IsElapsed() )
+			return;
+
+		//path_target_ent.SetForcedTauntCam( 0 );
+		path_target_ent = null;
+		attack_grabplayer_hit_timer.Stop();
+
+		attack_timer.Stop();
+		attack_specialattack_timer.Stop();
+		attack_groundslam_hit_timer = Timer();
+
+		DispatchParticleEffect( "bonk_text", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), bot.EyePosition() + Vector(0,0,32) );
+		stun_timer.Start( 5.8 );
+		EmitAmbientSoundOn( "TFPlayer.StunImpact", 10.0, 2000, 100, bot );
+		EmitAmbientSoundOn( "Halloween.Merasmus_Stun", 10.0, 2000, 100, bot );
+		bot.ResetSequence(seq_stun);
+		if (bot.GetSequence() != seq_stun)
+			bot.SetSequence(seq_stun);
+
+		ResetPath();
+		path_update_time_next = Time() + 5.8;
+		path_update_force = true;
+	}
+
 	function OnTakeDamage(params)
 	{
 		local healthBar = Entities.FindByClassname(null, "monster_resource");
@@ -471,22 +593,11 @@ class Yeti extends Bot
 				DispatchParticleEffect( "crit_text", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), bot.EyePosition() + Vector(0,0,32) );
 				EmitAmbientSoundOn( "TFPlayer.CritHit", 10.0, 75, 100, bot );
 
-
-				if ( attack_grabplayer_hit_timer.Running() && ( params.attacker == path_target_ent ) )
+				local ItemID = NetProps.GetPropInt(weapon, "m_AttributeManager.m_Item.m_iItemDefinitionIndex")
+				if ( ( attack_grabplayer_hit_timer.Running() && ( params.attacker == path_target_ent ) ) || ItemID == 656 ) // Holiday Punch
 				{
-					path_target_ent.SetForcedTauntCam( 0 );
-					path_target_ent = null;
-					attack_grabplayer_hit_timer.Stop();
-
-					stun_timer.Start( 5 );
-					EmitAmbientSoundOn( "Halloween.EyeballBossStunned", 10.0, 2000, 100, bot );
-					bot.ResetSequence(seq_stun);
-					if (bot.GetSequence() != seq_stun)
-						bot.SetSequence(seq_stun);
-
-					ResetPath();
-					path_update_time_next = Time() + 5;
-					path_update_force = true;
+					Stun();
+					//Say(null,"" + path_target_ent + " has stunned THE YETI\n\n", false);
 				}
 				else
 				{
@@ -509,7 +620,7 @@ class Yeti extends Bot
 			path_target_ent.SetForcedTauntCam(0);
 
 		//StopAmbientSoundOn("ui/cyoa_musicdrunkenpipebomb.mp3", bot);
-		EmitAmbientSoundOn( YETI_DEATH_SOUND, 10.0, 1000, 100, bot );
+		SendGlobalGameEvent( "teamplay_broadcast_audio", {team = -1, sound = YETI_DEATH_SOUND} );
 
 		DispatchParticleEffect( "env_sawblood", bot.GetOrigin() + Vector(0,0,32), Vector(0,0,0) );
 		DispatchParticleEffect( "xms_snowburst", bot.GetOrigin() + Vector(0,0,50), Vector(0,0,0) );
@@ -523,29 +634,39 @@ class Yeti extends Bot
 
 		yeti_model.Kill();
 
-		Say(null,"The YETI has been defeated!\n", false);
+		//Say(null,"The YETI has been defeated!\n", false);
+		//SendGlobalGameEvent( "pumpkin_lord_killed", {} );
+		SendGlobalGameEvent( "player_disconnect", {name = "THE YETI", reason = "Defeated by the mercenaries."} );
 
 		base.OnKilled(params);
 	}
 
 	attack_timer = Timer();
 	attack_hit_timer = Timer();
-	specialattack_timer = Timer();
 	attack_specialattack_timer = Timer();
 	attack_groundslam_hit_timer = Timer();
 	attack_grabplayer_hit_timer = Timer();
-	stun_timer = Timer();
 
 	idlevo_time_next = null;
 
 	seq_groundpound = null;
 	seq_grabplayer = null;
-	seq_stun = null;
 
 	yeti_model = null;
+	home_pos = null;
 }
 
-function SpawnYeti()
+function KillYeti()
+{
+	local boss = Entities.FindByClassname(null, "base_boss");
+	if ( boss && boss.IsValid && HasBotScript(boss) )
+	{
+		boss.TakeDamage(boss.GetMaxHealth(),Constants.FDmgType.DMG_CRUSH, null);
+	}
+
+}
+
+::SpawnYeti <- function()
 {
 	// Find point where player is looking
 	local player = GetListenServerHost();
@@ -558,7 +679,7 @@ function SpawnYeti()
 
 	if (!TraceLineEx(trace))
 	{
-		printl("Invalid bot spawn location");
+		printl("Invalid YETI spawn location");
 		return null;
 	}
 
@@ -581,4 +702,30 @@ function SpawnYeti()
 	return bot;
 }
 
-SpawnYeti();
+function SpawnYetiAtPos()
+{
+	if ( self && self.IsValid() )
+	{
+		local bot = SpawnEntityFromTable("base_boss", 
+		{
+			origin = self.GetOrigin(),
+			angles = self.GetAbsAngles(),
+			model = "models/player/heavy.mdl",
+			rendermode = 10,
+			playbackrate = 1.0 // Required for animations to be simulated
+		});
+
+		EntFireByHandle( bot, "AddOutput", "targetname npc_yeti_" + bot.GetScriptId(), 0, null, null );
+
+		// Add scope to the entity
+		bot.ValidateScriptScope();
+		// Append custom bot class and initialize its behavior
+		bot.GetScriptScope().my_bot <- Yeti(bot);
+	}
+	else
+	{
+		printl("Invalid YETI spawn entity");
+	}
+}
+
+SpawnYetiAtPos();
