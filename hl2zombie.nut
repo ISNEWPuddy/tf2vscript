@@ -1,6 +1,7 @@
-// Half Life 2 Zombie
-
-IncludeScript("hl2headcrab.nut");
+//================================================
+// recreation of Half-Life 2 npc_zombie 
+//================================================
+IncludeScript("puddybot/hl2headcrab.nut");
 
 Msg("Zombie Bot...\n");
 

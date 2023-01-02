@@ -1,7 +1,7 @@
-// Yeti Boss
-//Msg("Yeti Bot...\n");
-
-DoIncludeScript("botbase.nut", null);
+//================================================
+// The YETI Boss that spawns in and goes banana
+//================================================
+DoIncludeScript("puddybot/botbase.nut", null);
 
 local botbase_yeti_attack_range = 200;
 local botbase_yeti_health_base = 3000;
@@ -256,7 +256,7 @@ class Yeti extends PuddyBot
 							if ( grabbableTarget.GetPlayerClass() != Constants.ETFClass.TF_CLASS_SOLDIER )
 								EntFireByHandle( grabbableTarget, "SpeakResponseConcept", "HalloweenLongFall", 0, null, null );
 							else
-								EntFireByHandle( grabbableTarget, "SpeakResponseConcept", "TLK_PLAYER_PAIN", 0, null, null );
+								EntFireByHandle( grabbableTarget, "SpeakResponseConcept", "TLK_PLAYER_PAIN", 0, null, null ); // "TLK_DEFLECTED projectile:0 victim:1"
 
 							//grabbableTarget.SetForcedTauntCam( 1 );
 							attack_grabplayer_hit_timer.Start( 1.9 );
@@ -394,10 +394,10 @@ class Yeti extends PuddyBot
 
 		while ( targetEnemies = Entities.FindInSphere( targetEnemies, bot.GetOrigin(), 330.0 ) )
 		{
+			targetEnemies.ApplyAbsVelocityImpulse((targetEnemies.GetOrigin() - bot.GetOrigin()) + Vector(0, 0, 400));
 			if ( targetEnemies.IsPlayer() )
 			{
 				targetDamage = 25;
-				targetEnemies.ApplyAbsVelocityImpulse((targetEnemies.GetOrigin() - bot.GetOrigin()) + Vector(0, 0, 400));
 				targetEnemies.ApplyPunchImpulseX(10);
 				targetEnemies.AddCondEx(Constants.ETFCond.TF_COND_FREEZE_INPUT, 1.2, bot);
 				targetEnemies.AddCondEx(Constants.ETFCond.TF_COND_STUNNED, 1.2, bot);
@@ -426,7 +426,11 @@ class Yeti extends PuddyBot
 
 	function HealingSequence()
 	{
-		NetProps.SetPropInt(healthBar, "m_iBossState", 1 );
+		local healthBar = Entities.FindByClassname(null, "monster_resource");
+		if (healthBar && healthBar.IsValid)
+		{
+			NetProps.SetPropInt(healthBar, "m_iBossState", 1 );
+		}
 	}
 
 	function IsAttacking()
@@ -475,8 +479,6 @@ class Yeti extends PuddyBot
 			ScreenShake(bot.GetOrigin(), 2.0, 2.0, 2.0, 1500.0, 0, false);
 			idlevo_time_next = time + GetSoundDuration(sound,null) + 10;
 		}
-
-		return false;
 	}
 
 	function Update()
@@ -491,9 +493,9 @@ class Yeti extends PuddyBot
 			bot.GetLocomotionInterface().ClearStuckStatus("Yeti goes home.");
 		}
 
-		if (CanMove())
+		if ( CanMove() )
 		{
-			if (Move()) // Try moving
+			if ( Move() )
 			{
 				// Moving, set the run animation
 				if (bot.GetSequence() != seq_run)
@@ -529,7 +531,7 @@ class Yeti extends PuddyBot
 	function Ignite()
 	{
 		base.Ignite();
-		DispatchParticleEffect( "mvm_cash_explosion_embers", bot.GetOrigin(), Vector(0,0,0) );
+		//DispatchParticleEffect( "mvm_cash_explosion_embers", bot.GetOrigin(), Vector(0,0,0) );
 		//EntFireByHandle( bot, "Ignite", "", 0, null, null );=
 	}
 
@@ -638,6 +640,31 @@ class Yeti extends PuddyBot
 		//SendGlobalGameEvent( "pumpkin_lord_killed", {} );
 		SendGlobalGameEvent( "player_disconnect", {name = "THE YETI", reason = "Defeated by the mercenaries."} );
 
+		local tfragddoll = Entities.CreateByClassname("tf_ragdoll")
+		
+		NetProps.SetPropVector( tfragddoll, "m_vecRagdollOrigin", bot.GetOrigin() );
+		NetProps.SetPropVector( tfragddoll, "m_vecRagdollVelocity", bot.GetAbsVelocity() );
+		NetProps.SetPropVector( tfragddoll, "m_vecForce", damage_force );
+		NetProps.SetPropInt( tfragddoll, "m_nForceBone", 0 ); // Hitbox
+		//NetProps.SetPropInt( tfragddoll, "m_iPlayerIndex", bot.entindex() ); // no need
+		NetProps.SetPropBool( tfragddoll, "m_bGib", false );
+		NetProps.SetPropBool( tfragddoll, "m_bBurning", false );
+		NetProps.SetPropBool( tfragddoll, "m_bElectrocuted", false );
+		NetProps.SetPropBool( tfragddoll, "m_bOnGround", bot.GetLocomotionInterface().IsOnGround() );
+		NetProps.SetPropBool( tfragddoll, "m_bCloaked", false );
+		NetProps.SetPropInt( tfragddoll, "m_iDamageCustom", Constants.ETFDmgCustom.TF_DMG_CUSTOM_NONE );
+		NetProps.SetPropInt( tfragddoll, "m_iTeam", bot.GetTeam() );
+		NetProps.SetPropInt( tfragddoll, "m_iClass", Constants.ETFClass.TF_CLASS_HEAVYWEAPONS );
+		NetProps.SetPropBool( tfragddoll, "m_bGoldRagdoll", false );
+		NetProps.SetPropBool( tfragddoll, "m_bIceRagdoll", false );
+		NetProps.SetPropBool( tfragddoll, "m_bBecomeAsh", true );
+		NetProps.SetPropBool( tfragddoll, "m_bCritOnHardHit", false );
+		NetProps.SetPropFloat( tfragddoll, "m_flHeadScale", 1.0 );
+		NetProps.SetPropFloat( tfragddoll, "m_flTorsoScale", 1.0 );
+		NetProps.SetPropFloat( tfragddoll, "m_flHandScale", 1.0 );
+		tfragddoll.SetOwner(bot);
+		Entities.DispatchSpawn(tfragddoll);
+
 		base.OnKilled(params);
 	}
 
@@ -658,12 +685,12 @@ class Yeti extends PuddyBot
 
 function KillYeti()
 {
-	local boss = Entities.FindByClassname(null, "base_boss");
-	if ( boss && boss.IsValid && HasBotScript(boss) )
+	local bots = null;
+	while ( bots = Entities.FindByClassname(null, "base_boss") )
+	if ( HasBotScript(bots) )
 	{
-		boss.TakeDamage(boss.GetMaxHealth(),Constants.FDmgType.DMG_CRUSH, null);
+		bots.TakeDamage(bots.GetMaxHealth(),Constants.FDmgType.DMG_CRUSH, null);
 	}
-
 }
 
 ::SpawnYeti <- function()
@@ -728,4 +755,5 @@ function SpawnYetiAtPos()
 	}
 }
 
-SpawnYetiAtPos();
+SpawnYeti();
+//SpawnYetiAtPos();

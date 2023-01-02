@@ -1,8 +1,7 @@
+//================================================
 // guy from fortnite
-
-Msg("FORTNITE IO Guard Bot...\n");
-
-IncludeScript("botbase.nut");
+//================================================
+IncludeScript("puddybot/botbase.nut");
 
 local botbase_ioguard_attack_range = 250;
 local botbase_ioguard_health_base = 250;
@@ -215,6 +214,7 @@ class IOGuard extends PuddyBot
 			startdisabled = 1,
 			tracertype = "BrightTracer",
 		});
+		weapon_bullet.SetOwner(bot);
 		EntFireByHandle( weapon_bullet, "SetParent", "npc_ioguard_" + bot.GetScriptId(), 0, null, null );
 		//EntFireByHandle( weapon_bullet, "SetParentAttachmentMaintainOffset", "muzzle", 0, null, null );
 
@@ -588,8 +588,6 @@ class IOGuard extends PuddyBot
 			EmitAmbientSoundOn( sound, 10.0, 1500, 100, bot );
 			idlevo_time_next = time + GetSoundDuration(sound,null) + 10;
 		}
-
-		return false;
 	}
 
 	function Update()

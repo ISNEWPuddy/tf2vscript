@@ -1,7 +1,7 @@
-// Half Life 2 Headcrab
-Msg("Headcrab Bot...\n");
-
-IncludeScript("botbase.nut");
+//================================================
+// recreation of Half-Life 2 npc_headcrab 
+//================================================
+IncludeScript("puddybot/botbase.nut");
 
 local HEADCRAB_MELEE_REACH = 55;
 local HEADCRAB_HEALTH = 50;
