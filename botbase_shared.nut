@@ -2,9 +2,7 @@
 // Shared code for botbase
 //================================================
 
-const FLT_EPSILON		= 1.192092896e-7;;
-const FLT_MAX			= 3.402823466e+38;;
-const FLT_MIN			= 1.175494351e-38;;
+const FLT_MAX		= 1e+37
 
 const TF_DEATH_DOMINATION	=			1	// killer is dominating victim
 const TF_DEATH_ASSISTER_DOMINATION =	2	// assister is dominating victim
@@ -17,6 +15,7 @@ const TF_DEATH_GIBBED =					128	// player was gibbed
 const TF_DEATH_PURGATORY =				256	// player died while in purgatory
 const TF_DEATH_MINIBOSS = 				512	// player killed was a miniboss
 const TF_DEATH_AUSTRALIUM =				1024	// player killed by a Australium Weapon
+
 
 // Constrains an angle into [-180, 180] range
 function NormalizeAngle(target)
@@ -88,4 +87,21 @@ function VectorAngles(forward)
 ::DotProduct <- function(a, b)
 {
 	return ( a.x*b.x + a.y*b.y + a.z*b.z );
+}
+
+::IsAlive <- function(ent)
+{
+	if ( NetProps.GetPropInt( ent, "m_lifeState" ) == 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
+		return true;
+
+	if ( ent.IsPlayer() )
+	{
+		if ( NetProps.GetPropInt( ent, "m_Shared.m_nPlayerState" ) == 0 ) // TF_STATE_ACTIVE
+			return true;
+
+		if ( !ent.InCond( Constants.ETFCond.TF_COND_HALLOWEEN_GHOST_MODE ) )
+			return true;
+	}
+
+	return false;
 }

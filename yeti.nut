@@ -1,13 +1,13 @@
 //================================================
 // The YETI Boss that spawns in and goes banana
 //================================================
-DoIncludeScript("puddybot/botbase.nut", null);
+IncludeScript("puddybot/botbase.nut");
 
-local botbase_yeti_attack_range = 200;
-local botbase_yeti_health_base = 3000;
+const botbase_yeti_attack_range = 200;
+const botbase_yeti_health_base = 3000;
 
-local botbase_yeti_min_player_count = 10;
-local botbase_yeti_health_per_player = 200;
+const botbase_yeti_min_player_count = 10;
+const botbase_yeti_health_per_player = 200;
 
 const YETI_IDLE_SEQUENCE = "Stand_MELEE";
 const YETI_WALK_SEQUENCE = "Run_MELEE";
@@ -40,8 +40,8 @@ class Yeti extends PuddyBot
 	{
 		bot = bot_ent;
 
-		move_speed = 400.0;
-		turn_rate = 8.0;
+		move_speed = 420.0;
+		turn_rate = 10.0;
 		search_dist_z = 128.0;
 		search_dist_nearest = 128.0;
 
@@ -69,7 +69,7 @@ class Yeti extends PuddyBot
 
 		bIsOnFire = false;
 
-		selectvictim_range = 1500.0;
+		//selectvictim_range = FLT_MAX;
 		quitvictim_range = 2000.0;
 
 		yeti_model = null;
@@ -117,12 +117,14 @@ class Yeti extends PuddyBot
 		for (local i = 1; i <= Constants.Server.MAX_PLAYERS; i++)
 		{
 			local player = PlayerInstanceFromIndex(i)
-			if (player == null) continue
+			if (player == null)
 			{
-				if ( i > botbase_yeti_min_player_count )
-				{
-					bossHealth += ( i - botbase_yeti_min_player_count ) * botbase_yeti_health_per_player;
-				}
+				continue;
+			}
+
+			if ( i > botbase_yeti_min_player_count )
+			{
+				bossHealth += ( i - botbase_yeti_min_player_count ) * botbase_yeti_health_per_player;
 			}
 		}
 
@@ -149,7 +151,7 @@ class Yeti extends PuddyBot
 
 		home_pos = bot.GetOrigin();
 
-		bot.SetModelScale( 1.65, 0 );
+		bot.SetModelScale( 1.6, 0 );
 		SendGlobalGameEvent( "teamplay_broadcast_audio", {team = -1, sound = "Taunt.YetiAppearSnow"} );
 		DispatchParticleEffect( "xms_snowburst", bot.GetOrigin() + Vector(0,0,50), Vector(0,0,0) );
 		DispatchParticleEffect( "taunt_yeti_flash", bot.GetOrigin(), Vector(0,0,0) );
@@ -170,13 +172,7 @@ class Yeti extends PuddyBot
 		if ( victim == null )
 			return false;
 
-		//if ( !IsPotentiallyVisible( victim ) )
-			//return false;
-
-		if ( NetProps.GetPropInt(victim, "m_lifeState") > 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
-			return false;
-
-		if ( NetProps.GetPropInt(victim, "m_Shared.m_nPlayerState") != 0 ) // TF_STATE_ACTIVE
+		if ( !IsAlive( victim ) ) 
 			return false;
 
 		if ( victim.GetHealth() == 0 )
@@ -185,7 +181,7 @@ class Yeti extends PuddyBot
 		if ( victim.GetTeam() == bot.GetTeam() )
 			return false;
 
-		if ((bot.GetOrigin() - victim.GetOrigin()).Length() > 2000.0)
+		if ((bot.GetOrigin() - victim.GetOrigin()).Length() > quitvictim_range)
 			return false;
 
 		if ( victim.IsPlayer() )
@@ -461,14 +457,6 @@ class Yeti extends PuddyBot
 		return true;
 	}
 
-	function IsStunned()
-	{
-		if ( !stun_timer.IsElapsed() )
-			return true;
-
-		return false;
-	}
-
 	function IdleSound()
 	{
 		local time = Time();
@@ -478,6 +466,35 @@ class Yeti extends PuddyBot
 			EmitAmbientSoundOn( sound, 10.0, 1500, 100, bot );
 			ScreenShake(bot.GetOrigin(), 2.0, 2.0, 2.0, 1500.0, 0, false);
 			idlevo_time_next = time + GetSoundDuration(sound,null) + 10;
+		}
+	}
+
+	// look for enemies
+	function SelectVictim()
+	{
+		if ( IsPotentiallyChaseable( path_target_ent ) )
+			return;
+
+		path_target_ent = null;
+
+		for ( local i = 1; i <= Constants.Server.MAX_PLAYERS; i++ )
+		{
+			local player = PlayerInstanceFromIndex(i)
+			if ( player == null )
+				continue;
+	
+			if ( !IsPotentiallyChaseable( player ) )
+				continue;
+
+			if ( ( player.GetOrigin() - bot.GetOrigin() ).LengthSqr() < FLT_MAX )
+			{
+				path_target_ent = player;
+				AlertSound();
+				UpdatePath();
+
+				//if ( GetDeveloperLevel() >= 1 )
+					//printl(bot.GetName() + " is chasing " + NetProps.GetPropString(player, "m_szNetname") + "!");
+			}
 		}
 	}
 
@@ -599,7 +616,7 @@ class Yeti extends PuddyBot
 				if ( ( attack_grabplayer_hit_timer.Running() && ( params.attacker == path_target_ent ) ) || ItemID == 656 ) // Holiday Punch
 				{
 					Stun();
-					//Say(null,"" + path_target_ent + " has stunned THE YETI\n\n", false);
+					//Say(null,"" + NetProps.GetPropString(params.attacker, "m_szNetname") + " has stunned THE YETI\n", false);
 				}
 				else
 				{
@@ -663,6 +680,7 @@ class Yeti extends PuddyBot
 		NetProps.SetPropFloat( tfragddoll, "m_flTorsoScale", 1.0 );
 		NetProps.SetPropFloat( tfragddoll, "m_flHandScale", 1.0 );
 		tfragddoll.SetOwner(bot);
+		//NetProps.SetPropInt( tfragddoll, "m_nModelIndex", GetModelIndex("models/player/items/taunts/yeti/yeti.mdl") );
 		Entities.DispatchSpawn(tfragddoll);
 
 		base.OnKilled(params);
@@ -686,16 +704,25 @@ class Yeti extends PuddyBot
 function KillYeti()
 {
 	local bots = null;
-	while ( bots = Entities.FindByClassname(null, "base_boss") )
-	if ( HasBotScript(bots) )
+	while ( bots = Entities.FindByClassname(bots, "base_boss") )
 	{
-		bots.TakeDamage(bots.GetMaxHealth(),Constants.FDmgType.DMG_CRUSH, null);
+		if ( HasBotScript( bots ) )
+		{
+			bots.TakeDamage(bots.GetMaxHealth(),Constants.FDmgType.DMG_CRUSH, null);
+			bots.Kill();
+		}
+	}
+
+	local healthBar = Entities.FindByClassname(null, "monster_resource");
+	if (healthBar && healthBar.IsValid)
+	{
+		NetProps.SetPropInt(healthBar, "m_iBossHealthPercentageByte", 0 );
+		NetProps.SetPropInt(healthBar, "m_iBossStunPercentageByte", 0 );
 	}
 }
 
 ::SpawnYeti <- function()
 {
-	// Find point where player is looking
 	local player = GetListenServerHost();
 	local trace =
 	{
@@ -710,24 +737,38 @@ function KillYeti()
 		return null;
 	}
 
-	// Spawn bot at the end point
 	local bot = SpawnEntityFromTable("base_boss", 
 	{
 		origin = trace.pos,
 		model = "models/player/heavy.mdl",
 		rendermode = 10,
-		playbackrate = 1.0 // Required for animations to be simulated
+		playbackrate = 1.0
 	});
 
 	EntFireByHandle( bot, "AddOutput", "targetname npc_yeti_" + bot.GetScriptId(), 0, null, null );
 
-	// Add scope to the entity
 	bot.ValidateScriptScope();
-	// Append custom bot class and initialize its behavior
 	bot.GetScriptScope().my_bot <- Yeti(bot);
 
 	return bot;
 }
+
+/*function OnPostSpawn()
+{
+	local bot = SpawnEntityFromTable("base_boss", 
+	{
+		origin = self.GetOrigin(),
+		angles = self.GetAbsAngles(),
+		model = "models/player/heavy.mdl",
+		rendermode = 10,
+		playbackrate = 1.0
+	});
+
+	EntFireByHandle( bot, "AddOutput", "targetname npc_yeti_" + bot.GetScriptId(), 0, null, null );
+
+	bot.ValidateScriptScope();
+	bot.GetScriptScope().my_bot <- Yeti(bot);
+}*/
 
 function SpawnYetiAtPos()
 {

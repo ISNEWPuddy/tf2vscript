@@ -3,8 +3,8 @@
 //================================================
 ClearGameEventCallbacks();
 
-IncludeScript("puddybot/botbase_timer"); // github.com/Squinkz/vscript_timer
-IncludeScript("puddybot/botbase_shared");
+IncludeScript("puddybot/botbase_timer.nut"); // github.com/Squinkz/vscript_timer
+IncludeScript("puddybot/botbase_shared.nut");
 
 // Coordinate which is part of a path
 class PathPoint
@@ -281,16 +281,23 @@ class PuddyBot
 		path_target_ent = null;
 
 		// look for players
-		local newTarget = Entities.FindByClassnameNearest( "player", bot.GetOrigin(), selectvictim_range );
-		if ( newTarget != null )
+		for ( local i = 1; i <= Constants.Server.MAX_PLAYERS; i++ )
 		{
-			if ( IsPotentiallyChaseable( newTarget ) )
+			local player = PlayerInstanceFromIndex(i)
+			if ( player == null )
+				continue;
+	
+			if ( !IsPotentiallyChaseable( player ) )
+				continue;
+
+			if ( ( player.GetOrigin() - bot.GetOrigin() ).LengthSqr() < selectvictim_range )
 			{
-				path_target_ent = newTarget;
+				path_target_ent = player;
 				AlertSound();
 				UpdatePath();
 			}
 		}
+
 		/*else // look for more guns
 		{
 			newTarget = Entities.FindByClassnameNearest( "obj_*", bot.GetOrigin(), selectvictim_range );
@@ -328,10 +335,7 @@ class PuddyBot
 		if ( !IsPotentiallyVisible( victim ) )
 			return false;
 
-		if ( NetProps.GetPropInt(victim, "m_lifeState") > 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
-			return false;
-
-		if ( NetProps.GetPropInt(victim, "m_Shared.m_nPlayerState") != 0 ) // TF_STATE_ACTIVE
+		if ( !IsAlive( victim ) ) 
 			return false;
 
 		if ( victim.GetHealth() <= 0 )
@@ -360,9 +364,6 @@ class PuddyBot
 			//}
 
 			if ( victim.InAirDueToExplosion() )
-				return false;
-
-			if ( victim.InCond(Constants.ETFCond.TF_COND_HALLOWEEN_GHOST_MODE) )
 				return false;
 		}
 
@@ -511,7 +512,7 @@ class PuddyBot
 
 	function IsStunned()
 	{
-		return stun_timer.Running();
+		return !stun_timer.IsElapsed();
 	}
 
 	function Stun()
@@ -691,11 +692,13 @@ function BotThink()
 function KillAllBot()
 {
 	local bots = null;
-	while ( bots = Entities.FindByClassname(null, "base_boss") )
-	if ( HasBotScript(bots) )
+	while ( bots = Entities.FindByClassname(bots, "base_boss") )
 	{
-		bots.TakeDamage(bots.GetMaxHealth(),Constants.FDmgType.DMG_CRUSH, null);
-		bots.Kill();
+		if ( HasBotScript( bots ) )
+		{
+			bots.TakeDamage(bots.GetMaxHealth(),Constants.FDmgType.DMG_CRUSH, null);
+			bots.Kill();
+		}
 	}
 }
 
