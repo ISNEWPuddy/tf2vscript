@@ -28,29 +28,9 @@ class PuddyBot
 	{
 		bot = bot_ent;
 
-		move_speed = 230.0;
-		turn_rate = 5.0;
-		search_dist_z = 128.0;
-		search_dist_nearest = 128.0;
-
-		path = [];
-		path_index = 0;
-		path_reach_dist = 16.0;
-		path_target_ent = null;
-		path_target_ent_dist = 50.0;
-		path_target_pos = null;
-		path_update_time_next = Time();
-		path_update_time_delay = 0.2;
-		path_update_force = true;
-		area_list = {};
-
 		seq_idle = bot_ent.LookupSequence("Stand_MELEE");
 		seq_run = bot_ent.LookupSequence("Run_MELEE");
 		pose_move_x = bot_ent.LookupPoseParameter("move_x");
-
-		debug = false;
-
-		bIsOnFire = false;
 
 		Spawn();
 
@@ -612,22 +592,22 @@ class PuddyBot
 
 	bot = null;						// The bot entity we belong to
 
-	move_speed = null;				// How fast to move
-	turn_rate = null;				// How fast to turn
-	search_dist_z = null;			// Maximum distance to look for a nav area downwards
-	search_dist_nearest = null; 	// Maximum distance to look for any nearby nav area
+	move_speed = 230.0;				// How fast to move
+	turn_rate = 5.0;				// How fast to turn
+	search_dist_z = 128.0;			// Maximum distance to look for a nav area downwards
+	search_dist_nearest = 128.0; 	// Maximum distance to look for any nearby nav area
 
-	path = null;					// List of BotPathPoints
-	path_index = null;				// Current path point bot is at, -1 if none
-	path_reach_dist = null;			// Distance to a path point to be considered as 'reached'
+	path = [];						// List of BotPathPoints
+	path_index = 0;					// Current path point bot is at, -1 if none
+	path_reach_dist = 16.0;			// Distance to a path point to be considered as 'reached'
 	path_target_ent = null;			// What entity to move towards
-	path_target_ent_dist = null;	// Maximum distance after which the path is recomputed
+	path_target_ent_dist = 50.0;	// Maximum distance after which the path is recomputed
 									// if follow entity's current position is too far from our target position
 	path_target_pos = null;			// Position where bot wants to navigate to
-	path_update_time_next = null;	// Timer for when to update path again
-	path_update_time_delay = null;  // Seconds to wait before trying to attempt to update path again
-	path_update_force = null;		// Force path recomputation on the next tick
-	area_list = null;				// List of areas built in path
+	path_update_time_next = Time();	// Timer for when to update path again
+	path_update_time_delay = 0.2;	// Seconds to wait before trying to attempt to update path again
+	path_update_force = true;		// Force path recomputation on the next tick
+	area_list = {};					// List of areas built in path
 
 	seq_idle = null;				// Animation to use when idle
 	seq_run = null;					// Animation to use when running
@@ -702,12 +682,6 @@ function KillAllBot()
 	}
 }
 
-// Return true if this entity has the my_bot script scope
-function HasBotScript(ent)
-{
-	return (ent.GetScriptScope() != null && ent.GetScriptScope().my_bot != null);
-}
-
 function OnScriptHook_OnTakeDamage(params)
 {
 	local ent = params.const_entity;
@@ -738,7 +712,7 @@ function OnGameEvent_npc_hurt(params)
 
 function OnGameEvent_player_death(params)
 {
-    if ( params.death_flags & TF_DEATH_FEIGN_DEATH )
+    if ( params.death_flags & 32 ) //TF_DEATH_FEIGN_DEATH
         return;
 
 	local ent = EntIndexToHScript( params.inflictor_entindex );
@@ -750,8 +724,4 @@ function OnGameEvent_player_death(params)
 	}
 }
 
-/*function OnGameEvent_stats_resetround(params)
-{
-	ClearGameEventCallbacks();
-}*/
 __CollectGameEventCallbacks(this);

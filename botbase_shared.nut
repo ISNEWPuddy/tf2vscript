@@ -1,8 +1,6 @@
 //================================================
-// Shared code for botbase
+// Shared stuff for botbase
 //================================================
-
-const FLT_MAX		= 1e+37
 
 const TF_DEATH_DOMINATION	=			1	// killer is dominating victim
 const TF_DEATH_ASSISTER_DOMINATION =	2	// assister is dominating victim
@@ -66,6 +64,11 @@ function VectorAngles(forward)
 	return QAngle(pitch, yaw, 0.0);
 }
 
+function HasBotScript(ent)
+{
+	return (ent.GetScriptScope() != null && ent.GetScriptScope().my_bot != null);
+}
+
 ::clamp <- function (value, min, max)
 {
     if (value < min)
@@ -91,6 +94,9 @@ function VectorAngles(forward)
 
 ::IsAlive <- function(ent)
 {
+	if ( ent == null )
+		return false;
+
 	if ( NetProps.GetPropInt( ent, "m_lifeState" ) == 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
 		return true;
 

@@ -1,7 +1,9 @@
 //================================================
 // The YETI Boss that spawns in and goes banana
 //================================================
-IncludeScript("puddybot/botbase.nut");
+DoIncludeScript("puddybot/botbase.nut", null);
+
+const FLT_MAX = 1e+37;
 
 const botbase_yeti_attack_range = 200;
 const botbase_yeti_health_base = 3000;
@@ -42,19 +44,6 @@ class Yeti extends PuddyBot
 
 		move_speed = 420.0;
 		turn_rate = 10.0;
-		search_dist_z = 128.0;
-		search_dist_nearest = 128.0;
-
-		path = [];
-		path_index = 0;
-		path_reach_dist = 16.0;
-		path_target_ent = null;
-		path_target_ent_dist = 50.0;
-		path_target_pos = null;
-		path_update_time_next = Time();
-		path_update_time_delay = 0.2;
-		path_update_force = true;
-		area_list = {};
 
 		seq_idle = bot_ent.LookupSequence(YETI_IDLE_SEQUENCE);
 		seq_run = bot_ent.LookupSequence(YETI_WALK_SEQUENCE);
@@ -65,12 +54,8 @@ class Yeti extends PuddyBot
 		seq_stun = bot_ent.LookupSequence(YETI_STUN_SEQUENCE);
 		pose_move_x = bot_ent.LookupPoseParameter("move_x");
 
-		debug = false;
-
-		bIsOnFire = false;
-
 		//selectvictim_range = FLT_MAX;
-		quitvictim_range = 2000.0;
+		quitvictim_range = 1500.0;
 
 		yeti_model = null;
 		home_pos = null;
@@ -362,7 +347,7 @@ class Yeti extends PuddyBot
 				local vDmgForce = path_target_ent.GetOrigin() - bot_pos;
 
 				path_target_ent.ApplyPunchImpulseX(4);
-				path_target_ent.ApplyAbsVelocityImpulse( vDmgForce * 400 + Vector(0, 0, 400));
+				path_target_ent.ApplyAbsVelocityImpulse( vDmgForce * 400 + Vector(0, 0, 200));
 				path_target_ent.TakeDamageCustom(bot,bot,bot,vDmgForce,trace.pos,path_target_ent.GetMaxHealth() * 0.85,Constants.FDmgType.DMG_CRUSH, Constants.ETFDmgCustom.TF_DMG_CUSTOM_DECAPITATION_BOSS);
 				EmitAmbientSoundOn( YETI_ATTACK_HIT_SOUND, 10.0, 100, 100, path_target_ent );
 			}
@@ -386,21 +371,30 @@ class Yeti extends PuddyBot
 		local targetDamage = 100;
 
 		if ( debug )
-			DebugDrawCircle(bot.GetOrigin(), 0, 255, 0, 300.0, true, 5);
+			DebugDrawCircle(bot.GetOrigin(), 0, 255, 0, 330.0, true, 5);
 
 		while ( targetEnemies = Entities.FindInSphere( targetEnemies, bot.GetOrigin(), 330.0 ) )
 		{
-			targetEnemies.ApplyAbsVelocityImpulse((targetEnemies.GetOrigin() - bot.GetOrigin()) + Vector(0, 0, 400));
+			local vPush = targetEnemies.GetOrigin() - bot.GetOrigin();
+			vPush.z = 0.0;
+			vPush.Norm();
+			//vPush.z = 268.3281572999747; // causing weird infinite bunny jump???
+			targetEnemies.ApplyAbsVelocityImpulse(vPush);
+
+			if ( targetEnemies.GetFlags() & Constants.FPlayer.FL_ONGROUND )
+				NetProps.SetPropEntity( targetEnemies, "m_hGroundEntity", null );
+
 			if ( targetEnemies.IsPlayer() )
 			{
 				targetDamage = 25;
 				targetEnemies.ApplyPunchImpulseX(10);
 				targetEnemies.AddCondEx(Constants.ETFCond.TF_COND_FREEZE_INPUT, 1.2, bot);
 				targetEnemies.AddCondEx(Constants.ETFCond.TF_COND_STUNNED, 1.2, bot);
+				targetEnemies.AddCondEx(Constants.ETFCond.TF_COND_KNOCKED_INTO_AIR, 1.2, bot);
 				EntFireByHandle( targetEnemies, "SpeakResponseConcept", "TLK_PLAYER_PAIN", 0, null, null );
 				//EmitSoundOnClient( "Powerup.Knockout_Melee_Hit", targetEnemies );
 			}
-			targetEnemies.TakeDamageCustom(bot,bot,bot,Vector(0, 0, 0),Vector(0, 0, 0),targetDamage,Constants.FDmgType.DMG_CRUSH, Constants.ETFDmgCustom.TF_DMG_CUSTOM_DECAPITATION_BOSS);
+			targetEnemies.TakeDamageCustom(bot,bot,bot,vPush,Vector(0, 0, 0),targetDamage,Constants.FDmgType.DMG_CRUSH, Constants.ETFDmgCustom.TF_DMG_CUSTOM_DECAPITATION_BOSS);
 		}
 	}
 
@@ -504,10 +498,16 @@ class Yeti extends PuddyBot
 
 		UpdateAttack();
 
-		if ( bot.GetLocomotionInterface().IsStuck() && ( bot.GetLocomotionInterface().GetStuckDuration() > 5.0 ) )
+		// stuck?
+		if ( bot.GetLocomotionInterface().IsStuck())
 		{
-			bot.SetOrigin(home_pos);
-			bot.GetLocomotionInterface().ClearStuckStatus("Yeti goes home.");
+			if ( bot.GetLocomotionInterface().GetStuckDuration() > 5.0 )
+			{
+				//bot.SetOrigin( bot.GetLastKnownArea().FindRandomSpot() );
+				bot.SetOrigin(home_pos);
+				bot.GetLocomotionInterface().ClearStuckStatus("Yeti goes home.");
+				DispatchParticleEffect( "xms_snowburst", bot.GetOrigin() + Vector(0,0,50), Vector(0,0,0) );
+			}
 		}
 
 		if ( CanMove() )
@@ -665,7 +665,7 @@ class Yeti extends PuddyBot
 		NetProps.SetPropInt( tfragddoll, "m_nForceBone", 0 ); // Hitbox
 		//NetProps.SetPropInt( tfragddoll, "m_iPlayerIndex", bot.entindex() ); // no need
 		NetProps.SetPropBool( tfragddoll, "m_bGib", false );
-		NetProps.SetPropBool( tfragddoll, "m_bBurning", false );
+		NetProps.SetPropBool( tfragddoll, "m_bBurning", bIsOnFire );
 		NetProps.SetPropBool( tfragddoll, "m_bElectrocuted", false );
 		NetProps.SetPropBool( tfragddoll, "m_bOnGround", bot.GetLocomotionInterface().IsOnGround() );
 		NetProps.SetPropBool( tfragddoll, "m_bCloaked", false );
@@ -753,7 +753,7 @@ function KillYeti()
 	return bot;
 }
 
-/*function OnPostSpawn()
+function SpawnYetiAtPos()
 {
 	local bot = SpawnEntityFromTable("base_boss", 
 	{
@@ -761,40 +761,18 @@ function KillYeti()
 		angles = self.GetAbsAngles(),
 		model = "models/player/heavy.mdl",
 		rendermode = 10,
-		playbackrate = 1.0
+		playbackrate = 1.0 // Required for animations to be simulated
 	});
 
 	EntFireByHandle( bot, "AddOutput", "targetname npc_yeti_" + bot.GetScriptId(), 0, null, null );
 
+	// Add scope to the entity
 	bot.ValidateScriptScope();
+	// Append custom bot class and initialize its behavior
 	bot.GetScriptScope().my_bot <- Yeti(bot);
-}*/
 
-function SpawnYetiAtPos()
-{
-	if ( self && self.IsValid() )
-	{
-		local bot = SpawnEntityFromTable("base_boss", 
-		{
-			origin = self.GetOrigin(),
-			angles = self.GetAbsAngles(),
-			model = "models/player/heavy.mdl",
-			rendermode = 10,
-			playbackrate = 1.0 // Required for animations to be simulated
-		});
-
-		EntFireByHandle( bot, "AddOutput", "targetname npc_yeti_" + bot.GetScriptId(), 0, null, null );
-
-		// Add scope to the entity
-		bot.ValidateScriptScope();
-		// Append custom bot class and initialize its behavior
-		bot.GetScriptScope().my_bot <- Yeti(bot);
-	}
-	else
-	{
-		printl("Invalid YETI spawn entity");
-	}
+	return bot;
 }
 
-SpawnYeti();
-//SpawnYetiAtPos();
+//SpawnYeti();
+SpawnYetiAtPos();
