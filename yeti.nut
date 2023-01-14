@@ -3,8 +3,6 @@
 //================================================
 DoIncludeScript("puddybot/botbase.nut", null);
 
-const FLT_MAX = 1e+37;
-
 const botbase_yeti_attack_range = 200;
 const botbase_yeti_health_base = 3000;
 
@@ -73,23 +71,22 @@ class Yeti extends PuddyBot
 		for (local i = 0; i < YETI_IDLE_SOUND.len(); i++)
 		{
 			if ( IsSoundPrecached( YETI_IDLE_SOUND[i] )  )
-				bot.PrecacheScriptSound( YETI_IDLE_SOUND[i] );
+				PrecacheScriptSound( YETI_IDLE_SOUND[i] );
 		}
 
-		bot.PrecacheScriptSound( YETI_ATTACK_SOUND );
-		bot.PrecacheScriptSound( YETI_ATTACK_HIT_SOUND );
-		bot.PrecacheScriptSound( YETI_DEATH_SOUND );
-		bot.PrecacheScriptSound( YETI_ALERT_SOUND );
-		bot.PrecacheScriptSound( YETI_PAIN_SOUND );
+		PrecacheScriptSound( YETI_ATTACK_SOUND );
+		PrecacheScriptSound( YETI_ATTACK_HIT_SOUND );
+		PrecacheScriptSound( YETI_DEATH_SOUND );
+		PrecacheScriptSound( YETI_ALERT_SOUND );
+		PrecacheScriptSound( YETI_PAIN_SOUND );
 
-		bot.PrecacheScriptSound( "Taunt.YetiLand" );
-		bot.PrecacheScriptSound( "Taunt.YetiGroundPound" );
-		bot.PrecacheScriptSound( "Powerup.Knockout_Melee_Hit" );
-		bot.PrecacheScriptSound( "Taunt.YetiAppearSnow" );
-		//bot.PrecacheScriptSound( "Yeti.StatueGrowl" );
-		bot.PrecacheScriptSound( "taunt_headbutt_sfx_head_impact" );
-		bot.PrecacheScriptSound( "TFPlayer.StunImpact" );
-		bot.PrecacheScriptSound( "Halloween.Merasmus_Stun" );
+		PrecacheScriptSound( "Taunt.YetiLand" );
+		PrecacheScriptSound( "Taunt.YetiGroundPound" );
+		PrecacheScriptSound( "Powerup.Knockout_Melee_Hit" );
+		PrecacheScriptSound( "Taunt.YetiAppearSnow" );
+		PrecacheScriptSound( "taunt_headbutt_sfx_head_impact" );
+		PrecacheScriptSound( "TFPlayer.StunImpact" );
+		PrecacheScriptSound( "Halloween.Merasmus_Stun" );
 
 		//PrecacheSound("ui/cyoa_musicdrunkenpipebomb.mp3");
 	}
@@ -131,8 +128,10 @@ class Yeti extends PuddyBot
 			model = "models/player/items/taunts/yeti/yeti.mdl",
 			effects = Constants.FEntityEffects.EF_BONEMERGE | Constants.FEntityEffects.EF_PARENT_ANIMATES,
 		});
-		EntFireByHandle( yeti_model, "SetParent", "npc_yeti_" + bot.GetScriptId(), 0, null, null );
-		EntFireByHandle( yeti_model, "SetParentAttachment", "head", 0, null, null );
+		EntFireByHandle( yeti_model, "SetParent", "!activator" 0, bot, null );
+		EntFireByHandle( yeti_model, "SetParentAttachment", "head", 0, bot, null );
+
+		bot.AddSolidFlags(Constants.FSolid.FSOLID_NOT_STANDABLE );
 
 		home_pos = bot.GetOrigin();
 
@@ -149,6 +148,7 @@ class Yeti extends PuddyBot
 
 	function AlertSound()
 	{
+		//EmitSoundEx({sound_name = YETI_ALERT_SOUND, channel = 2, volume = 1.0, flags = 0, entity = bot, speaker_entity = yeti_model });
 		EmitAmbientSoundOn( YETI_ALERT_SOUND, 10.0, 75, 100, bot );
 	}
 
@@ -213,7 +213,7 @@ class Yeti extends PuddyBot
 			return;
 
 		if ( !attack_specialattack_timer.Running() )
-			attack_specialattack_timer.Start( 15.0 );
+			attack_specialattack_timer.Start( RandomFloat( 10.0, 15.0 ) );
 
 		if ( attack_timer.IsElapsed() )
 		{
@@ -243,6 +243,7 @@ class Yeti extends PuddyBot
 							attack_grabplayer_hit_timer.Start( 1.9 );
 							attack_timer.Start( 6 );
 
+							//EmitSoundEx({sound_name = "Taunt.YetiRoarFirst", channel = 2, volume = 1.0, flags = 0, entity = bot, speaker_entity = yeti_model });
 							EmitAmbientSoundOn( "Taunt.YetiRoarFirst", 10.0, 1000, 100, bot );
 
 							bot.ResetSequence(seq_grabplayer);
@@ -258,7 +259,7 @@ class Yeti extends PuddyBot
 							attack_groundslam_hit_timer.Start( 5.4 );
 							attack_timer.Start( 7 );
 
-							EmitAmbientSoundOn( "Taunt.YetiRoarSecond", 10.0, 1000, 100, bot );
+							EmitSoundEx({sound_name = "Taunt.YetiRoarSecond", channel = 2, volume = 1.0, flags = 0, entity = bot });
 
 							bot.ResetSequence(seq_groundpound);
 							if (bot.GetSequence() != seq_groundpound)
@@ -271,7 +272,7 @@ class Yeti extends PuddyBot
 					}
 					else
 					{
-						EmitAmbientSoundOn( YETI_ATTACK_SOUND, 10.0, 1000, 100, bot );
+						EmitSoundEx({sound_name = YETI_ATTACK_SOUND, channel = 2, volume = 1.0, flags = 0, entity = bot, speaker_entity = yeti_model });
 
 						bot.ResetSequence(seq_attack);
 						if (bot.GetSequence() != seq_attack)
@@ -347,8 +348,9 @@ class Yeti extends PuddyBot
 				local vDmgForce = path_target_ent.GetOrigin() - bot_pos;
 
 				path_target_ent.ApplyPunchImpulseX(4);
-				path_target_ent.ApplyAbsVelocityImpulse( vDmgForce * 400 + Vector(0, 0, 200));
+				path_target_ent.ApplyAbsVelocityImpulse( vDmgForce * 40 + Vector(0, 0, 200));
 				path_target_ent.TakeDamageCustom(bot,bot,bot,vDmgForce,trace.pos,path_target_ent.GetMaxHealth() * 0.85,Constants.FDmgType.DMG_CRUSH, Constants.ETFDmgCustom.TF_DMG_CUSTOM_DECAPITATION_BOSS);
+				//EmitSoundEx({sound_name = YETI_ATTACK_SOUND, volume = 1.0, flags = 0, bot = path_target_ent, origin = path_target_ent.GetOrigin() });
 				EmitAmbientSoundOn( YETI_ATTACK_HIT_SOUND, 10.0, 100, 100, path_target_ent );
 			}
 		}
@@ -404,9 +406,13 @@ class Yeti extends PuddyBot
 
 		DispatchParticleEffect( "taunt_headbutt_impact", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), Vector(0,0,0) );
 		DispatchParticleEffect( "mvm_soldier_shockwave", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), Vector(0,0,0) );
+
+		//EmitSoundEx({sound_name = YETI_ATTACK_HIT_SOUND, channel = 6, volume = 1.0, flags = 0, entity = bot, origin = bot.GetAttachmentOrigin(bot.LookupAttachment("head")) });
+		//EmitSoundEx({sound_name = "Powerup.Knockout_Melee_Hit", channel = 6, volume = 1.0, flags = 0, entity = bot, origin = bot.GetAttachmentOrigin(bot.LookupAttachment("head")) });
+		//EmitSoundEx({sound_name = "taunt_headbutt_sfx_head_impact", channel = 6, volume = 1.0, flags = 0, entity = path_target_ent, origin = bot.GetAttachmentOrigin(bot.LookupAttachment("head")) });
+
 		EmitAmbientSoundOn( YETI_ATTACK_HIT_SOUND, 10.0, 100, 1000, bot );
 		EmitAmbientSoundOn( "Powerup.Knockout_Melee_Hit", 10.0, 1000, 100, bot );
-
 		EmitAmbientSoundOn( "taunt_headbutt_sfx_head_impact", 10.0, 100, 1000, path_target_ent );
 
 		//path_target_ent.SetForcedTauntCam(0);
@@ -457,7 +463,7 @@ class Yeti extends PuddyBot
 		if (idlevo_time_next < time)
 		{
 			local sound = YETI_IDLE_SOUND[rand() % YETI_IDLE_SOUND.len()];
-			EmitAmbientSoundOn( sound, 10.0, 1500, 100, bot );
+			EmitSoundEx({sound_name = sound, channel = 2, volume = 1.0, flags = 0, entity = bot, speaker_entity = yeti_model });
 			ScreenShake(bot.GetOrigin(), 2.0, 2.0, 2.0, 1500.0, 0, false);
 			idlevo_time_next = time + GetSoundDuration(sound,null) + 10;
 		}
@@ -567,8 +573,9 @@ class Yeti extends PuddyBot
 
 		DispatchParticleEffect( "bonk_text", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), bot.EyePosition() + Vector(0,0,32) );
 		stun_timer.Start( 5.8 );
+		//EmitSoundEx({sound_name = "TFPlayer.StunImpact", channel = 6, volume = 1.0, flags = 0, entity = bot });
 		EmitAmbientSoundOn( "TFPlayer.StunImpact", 10.0, 2000, 100, bot );
-		EmitAmbientSoundOn( "Halloween.Merasmus_Stun", 10.0, 2000, 100, bot );
+		SendGlobalGameEvent( "teamplay_broadcast_audio", {team = -1, sound = "Halloween.Merasmus_Stun"} );
 		bot.ResetSequence(seq_stun);
 		if (bot.GetSequence() != seq_stun)
 			bot.SetSequence(seq_stun);
@@ -597,6 +604,7 @@ class Yeti extends PuddyBot
 		}
 
 		DispatchParticleEffect( "blood_impact_red_01", params.damage_position, Vector(0,0,0) );
+		//EmitSoundEx({sound_name = YETI_PAIN_SOUND, channel = 6, volume = 1.0, flags = 0, entity = bot, speaker_entity = yeti_model });
 		EmitAmbientSoundOn( YETI_PAIN_SOUND, 10.0, 1000, 100, bot );
 
 		damage_force = params.damage_force;
@@ -607,10 +615,11 @@ class Yeti extends PuddyBot
 			if ( ( params.attacker && params.attacker.IsPlayer() && params.attacker.IsCritBoosted() ) || ( NetProps.GetPropBool(weapon, "m_bCurrentAttackIsCrit") == true ) || params.crit_type == Constants.ECritType.CRIT_FULL 
 			|| params.damage_custom == Constants.ETFDmgCustom.TF_DMG_CUSTOM_HEADSHOT 
 			|| params.damage_custom == Constants.ETFDmgCustom.TF_DMG_CUSTOM_CLEAVER_CRIT
-			|| params.damage_custom == Constants.ETFDmgCustom.TF_DMG_CUSTOM_SHOTGUN_REVENGE_CRIT )
+			|| params.damage_custom == Constants.ETFDmgCustom.TF_DMG_CUSTOM_SHOTGUN_REVENGE_CRIT
+			|| ( ( params.damage_type & Constants.FDmgType.DMG_AIRBOAT ) && ( ( params.damage_position - bot.GetAttachmentOrigin( bot.LookupAttachment( "head" ) ) ).LengthSqr() < 32*32 ) ) )
 			{
 				DispatchParticleEffect( "crit_text", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), bot.EyePosition() + Vector(0,0,32) );
-				EmitAmbientSoundOn( "TFPlayer.CritHit", 10.0, 75, 100, bot );
+				EmitSoundEx({sound_name = "TFPlayer.CritHit", channel = 3, volume = 0.75, flags = 0, entity = bot });
 
 				local ItemID = NetProps.GetPropInt(weapon, "m_AttributeManager.m_Item.m_iItemDefinitionIndex")
 				if ( ( attack_grabplayer_hit_timer.Running() && ( params.attacker == path_target_ent ) ) || ItemID == 656 ) // Holiday Punch
@@ -628,7 +637,7 @@ class Yeti extends PuddyBot
 			if ( params.crit_type == Constants.ECritType.CRIT_MINI )
 			{
 				DispatchParticleEffect( "minicrit_text", bot.GetAttachmentOrigin(bot.LookupAttachment("head")), bot.EyePosition() + Vector(0,0,32) );
-				EmitAmbientSoundOn( "TFPlayer.CritHitMini", 10.0, 75, 100, bot );
+				EmitSoundEx({sound_name = "TFPlayer.CritHitMini", channel = 3, volume = 0.75, flags = 0, entity = bot });
 			}
 		}
 	}
@@ -741,8 +750,7 @@ function KillYeti()
 	{
 		origin = trace.pos,
 		model = "models/player/heavy.mdl",
-		rendermode = 10,
-		playbackrate = 1.0
+		rendermode = 10
 	});
 
 	EntFireByHandle( bot, "AddOutput", "targetname npc_yeti_" + bot.GetScriptId(), 0, null, null );
@@ -760,8 +768,7 @@ function SpawnYetiAtPos()
 		origin = self.GetOrigin(),
 		angles = self.GetAbsAngles(),
 		model = "models/player/heavy.mdl",
-		rendermode = 10,
-		playbackrate = 1.0 // Required for animations to be simulated
+		rendermode = 10
 	});
 
 	EntFireByHandle( bot, "AddOutput", "targetname npc_yeti_" + bot.GetScriptId(), 0, null, null );

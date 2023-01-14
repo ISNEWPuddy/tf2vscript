@@ -2,6 +2,10 @@
 // Shared stuff for botbase
 //================================================
 
+FLT_MAX <- 1e+37;
+
+DMG_USE_HITLOCATIONS <- Constants.FDmgType.DMG_AIRBOAT;
+
 const TF_DEATH_DOMINATION	=			1	// killer is dominating victim
 const TF_DEATH_ASSISTER_DOMINATION =	2	// assister is dominating victim
 const TF_DEATH_REVENGE =				4	// killer got revenge on victim
@@ -86,6 +90,16 @@ function HasBotScript(ent)
 	return (dx * dx) + (dy * dy) + (dz * dz)
 }
 
+::IsLengthGreaterThan <- function(val)
+{
+	return LengthSqr() > val*val;
+}
+
+::IsLengthLessThan <- function(val)
+{
+	return LengthSqr() < val*val;
+}
+
 
 ::DotProduct <- function(a, b)
 {
@@ -97,9 +111,6 @@ function HasBotScript(ent)
 	if ( ent == null )
 		return false;
 
-	if ( NetProps.GetPropInt( ent, "m_lifeState" ) == 0 ) // 0-LIFE_ALIVE  1-LIFE_DYING
-		return true;
-
 	if ( ent.IsPlayer() )
 	{
 		if ( NetProps.GetPropInt( ent, "m_Shared.m_nPlayerState" ) == 0 ) // TF_STATE_ACTIVE
@@ -109,5 +120,5 @@ function HasBotScript(ent)
 			return true;
 	}
 
-	return false;
+	return ( NetProps.GetPropInt( ent, "m_lifeState" ) == 0 );
 }

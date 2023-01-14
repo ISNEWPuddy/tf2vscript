@@ -40,14 +40,15 @@ class PuddyBot
 
 	function Precache()
 	{
-		bot.PrecacheScriptSound( "TFPlayer.CritHit" );
-		bot.PrecacheScriptSound( "TFPlayer.CritHitMini" );
+		PrecacheScriptSound( "TFPlayer.CritHit" );
+		PrecacheScriptSound( "TFPlayer.CritHitMini" );
 	}
 
 	function Spawn()
 	{
 		Precache();
 
+		NetProps.SetPropFloat( bot, "m_flPlaybackRate", 1.0 ); // Required for animations to be simulated
 		NetProps.SetPropFloat( bot, "m_speed", move_speed ); 
 
 		bot.AddFlag(Constants.FPlayer.FL_NPC);
@@ -421,6 +422,14 @@ class PuddyBot
 					bot.SetSequence(seq_run);
 					bot.SetPoseParameter(pose_move_x, 1.0); // Set the move_x pose to max weight
 				}
+
+				// adjust animation speed to actual movement speed
+				/*if ( bot.GetLocomotionInterface().GetGroundSpeed() > 0.0 )
+				{
+					// Clamp playback rate to avoid datatable warnings.  Anything faster would look silly, anyway.
+					local playbackRate = clamp( speed / bot.GetLocomotionInterface().GetGroundSpeed(), -4.0, 12.0 );
+					bot.SetPlaybackRate( playbackRate );
+				}*/
 			}
 			else
 			{
@@ -586,8 +595,7 @@ class PuddyBot
 
 	function VictimKilled()
 	{
-		if ( path_target_ent != null ) 
-			path_target_ent = null;
+		path_target_ent = null;
 	}
 
 	bot = null;						// The bot entity we belong to
@@ -657,7 +665,6 @@ function BotThink()
 		targetname = "bot",
 		origin = trace.pos,
 		model = "models/bots/heavy/bot_heavy.mdl",
-		playbackrate = 1.0, // Required for animations to be simulated
 		health = 100
 	});
 
@@ -716,10 +723,10 @@ function OnGameEvent_player_death(params)
         return;
 
 	local ent = EntIndexToHScript( params.inflictor_entindex );
-	local victim = EntIndexToHScript( params.victim_entindex );
+	local victim = GetPlayerFromUserID( params.userid );
 	if ( ( ent && ent.IsValid() && ( ent.GetClassname() == "base_boss" ) && HasBotScript(ent) ) && ( victim && victim.IsValid() ))
 	{
-		//Msg(ent.GetName() + " Killed " + NetProps.GetPropString(victim, "m_szNetname") + "\n" );
+		printl(ent.GetName() + " Killed " + NetProps.GetPropString(victim, "m_szNetname") );
 		ent.GetScriptScope().my_bot.VictimKilled();
 	}
 }
